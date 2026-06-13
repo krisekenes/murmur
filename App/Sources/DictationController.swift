@@ -13,6 +13,7 @@ public final class DictationController: HotkeyMonitorDelegate {
     private var overlay: OverlayPanel?
     private var pendingHide: DispatchWorkItem?
     private var levelTimer: Timer?
+    private var transcriberReady = false
 
     public init(state: AppState) {
         self.state = state
@@ -27,6 +28,14 @@ public final class DictationController: HotkeyMonitorDelegate {
         Task { await loadModels() }
     }
 
+    public func restartHotkey() {
+        monitor?.delegate = nil
+        let monitor = HotkeyMonitor(choice: state.hotkey)
+        monitor.delegate = self
+        monitor.start()
+        self.monitor = monitor
+    }
+
     private func loadModels() async {
         state.phase = .downloading(0)
         await transcriber.load { p in Task { @MainActor in self.state.phase = .downloading(p * 0.5) } }
@@ -34,6 +43,7 @@ public final class DictationController: HotkeyMonitorDelegate {
             state.phase = .error("Speech model failed to load: \(msg)")
             return
         }
+        transcriberReady = true
         await polisher.load { p in Task { @MainActor in self.state.phase = .downloading(0.5 + p * 0.5) } }
         // Polish is optional; if it fails we still dictate (raw transcript), so don't hard-error.
         state.phase = .idle
@@ -41,6 +51,7 @@ public final class DictationController: HotkeyMonitorDelegate {
 
     // MARK: HotkeyMonitorDelegate
     public func hotkeyDidEmit(_ effect: DictationEffect, mode: HotkeyMode?) {
+        guard transcriberReady else { return }
         switch effect {
         case .startRecording:
             do {

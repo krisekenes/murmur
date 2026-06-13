@@ -38,12 +38,35 @@ struct MurmurApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let state = AppState()
     private var controller: DictationController?
+    private var onboardingWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
         let controller = DictationController(state: state)
         controller.startServices()
         self.controller = controller
+
+        if !Permissions.accessibilityGranted || !Permissions.microphoneGranted {
+            presentOnboarding()
+        }
+    }
+
+    private func presentOnboarding() {
+        let root = OnboardingView(state: state) { [weak self] in
+            self?.onboardingWindow?.close()
+            self?.onboardingWindow = nil
+            // Accessibility may have just been granted; the original event tap
+            // could not be created without it, so rebuild the hotkey monitor.
+            self?.controller?.restartHotkey()
+        }
+        let window = NSWindow(contentViewController: NSHostingController(rootView: root))
+        window.title = "Welcome to Murmur"
+        window.styleMask = [.titled, .closable]
+        window.isReleasedWhenClosed = false
+        window.center()
+        onboardingWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 }
 
