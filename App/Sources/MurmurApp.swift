@@ -10,11 +10,17 @@ struct MurmurApp: App {
             MenuContent(state: appDelegate.state)
         } label: {
             Image(systemName: menuIcon(for: appDelegate.state.phase))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(isActive(appDelegate.state.phase) ? Theme.accent : Color.primary)
         }
 
         Window("History", id: "history") { HistoryView(state: appDelegate.state) }
             .windowResizability(.contentSize)
         Settings { SettingsView(state: appDelegate.state) }
+    }
+
+    private func isActive(_ phase: AppState.Phase) -> Bool {
+        switch phase { case .idle, .error: return false; default: return true }
     }
 
     private func menuIcon(for phase: AppState.Phase) -> String {
