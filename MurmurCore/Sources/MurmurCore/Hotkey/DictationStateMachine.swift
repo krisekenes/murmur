@@ -7,6 +7,8 @@ public enum DictationEffect: Equatable, Sendable {
     case startRecording
     case finishRecording
     case cancelRecording
+    /// Reserved contract case: the machine signals double-tap timing via
+    /// `pendingTimeout` rather than returning this. Kept for the documented effect set.
     case scheduleTimeout(after: TimeInterval)
     case none
 }
@@ -23,7 +25,6 @@ public final class DictationStateMachine {
         case idle
         case recording(HotkeyMode)
         case awaitingSecondTap
-        case lockedArmed
     }
 
     public private(set) var state: State = .idle
@@ -62,7 +63,7 @@ public final class DictationStateMachine {
 
         case (.awaitingSecondTap, .keyDown):
             if now - firstTapReleasedAt <= tuning.doubleTapWindow {
-                state = .lockedArmed
+                state = .recording(.locked)
                 return .startRecording
             }
             keyDownAt = now
@@ -72,14 +73,6 @@ public final class DictationStateMachine {
         case (.awaitingSecondTap, .timeout), (.awaitingSecondTap, .escape):
             state = .idle
             return .none
-
-        case (.lockedArmed, .keyUp):
-            state = .recording(.locked)
-            return .none
-
-        case (.lockedArmed, .escape):
-            state = .idle
-            return .cancelRecording
 
         case (.recording(.locked), .keyDown):
             state = .idle

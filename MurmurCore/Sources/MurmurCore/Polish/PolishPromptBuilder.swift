@@ -5,7 +5,7 @@ public struct PolishPromptBuilder: Sendable {
     public init(minWords: Int) { self.minWords = minWords }
 
     public func wordCount(_ text: String) -> Int {
-        text.split { $0 == " " || $0 == "\n" || $0 == "\t" }.count
+        text.split(whereSeparator: { $0.isWhitespace }).count
     }
 
     public func shouldPolish(_ text: String) -> Bool {

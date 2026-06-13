@@ -8,7 +8,11 @@ public final class VocabularyStore {
         self.fileURL = fileURL
         if FileManager.default.fileExists(atPath: fileURL.path) {
             let data = try Data(contentsOf: fileURL)
-            words = (try? JSONDecoder().decode([String].self, from: data)) ?? []
+            if let decoded = try? JSONDecoder().decode([String].self, from: data) {
+                words = decoded
+            } else {
+                try? FileManager.default.moveItem(at: fileURL, to: fileURL.appendingPathExtension("corrupt"))
+            }
         }
     }
 

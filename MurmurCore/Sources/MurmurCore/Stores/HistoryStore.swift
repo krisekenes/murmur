@@ -23,7 +23,12 @@ public final class HistoryStore {
         self.limit = limit
         if FileManager.default.fileExists(atPath: fileURL.path) {
             let data = try Data(contentsOf: fileURL)
-            entries = (try? JSONDecoder().decode([HistoryEntry].self, from: data)) ?? []
+            if let decoded = try? JSONDecoder().decode([HistoryEntry].self, from: data) {
+                entries = decoded
+            } else {
+                // Don't silently overwrite a corrupt file — set it aside so data can be recovered.
+                try? FileManager.default.moveItem(at: fileURL, to: fileURL.appendingPathExtension("corrupt"))
+            }
         }
     }
 

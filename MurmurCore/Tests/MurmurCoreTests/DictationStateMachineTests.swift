@@ -62,4 +62,15 @@ final class DictationStateMachineTests: XCTestCase {
         XCTAssertEqual(m.handle(.escape, at: 1.0), .cancelRecording)
         XCTAssertEqual(m.state, .idle)
     }
+
+    func test_lockedRecording_stopsOnKeyDown_evenIfArmingKeyUpMissing() {
+        let m = machine()
+        _ = m.handle(.keyDown, at: 0.0)
+        _ = m.handle(.keyUp, at: 0.1)
+        _ = m.handle(.keyDown, at: 0.25)          // double-tap => locked
+        XCTAssertEqual(m.state, .recording(.locked))
+        // The arming tap's keyUp never arrives; the user taps to stop.
+        XCTAssertEqual(m.handle(.keyDown, at: 5.0), .finishRecording)
+        XCTAssertEqual(m.state, .idle)
+    }
 }
