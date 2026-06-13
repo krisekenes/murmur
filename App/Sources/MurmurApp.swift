@@ -3,20 +3,18 @@ import MurmurCore
 
 @main
 struct MurmurApp: App {
-    @StateObject private var state = AppState()
-
-    init() { NSApplication.shared.setActivationPolicy(.accessory) }
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
         MenuBarExtra {
-            MenuContent(state: state)
+            MenuContent(state: appDelegate.state)
         } label: {
-            Image(systemName: menuIcon(for: state.phase))
+            Image(systemName: menuIcon(for: appDelegate.state.phase))
         }
 
-        Window("History", id: "history") { HistoryView(state: state) }
+        Window("History", id: "history") { HistoryView(state: appDelegate.state) }
             .windowResizability(.contentSize)
-        Settings { SettingsView(state: state) }
+        Settings { SettingsView(state: appDelegate.state) }
     }
 
     private func menuIcon(for phase: AppState.Phase) -> String {
@@ -27,6 +25,19 @@ struct MurmurApp: App {
         case .downloading: return "arrow.down.circle"
         case .error: return "exclamationmark.triangle"
         }
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    let state = AppState()
+    private var controller: DictationController?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApplication.shared.setActivationPolicy(.accessory)
+        let controller = DictationController(state: state)
+        controller.startServices()
+        self.controller = controller
     }
 }
 

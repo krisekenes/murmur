@@ -4,7 +4,7 @@ import MurmurCore
 
 @MainActor
 public protocol HotkeyMonitorDelegate: AnyObject {
-    func hotkeyDidEmit(_ effect: DictationEffect)
+    func hotkeyDidEmit(_ effect: DictationEffect, mode: HotkeyMode?)
 }
 
 public enum HotkeyChoice: String, CaseIterable, Sendable {
@@ -95,7 +95,9 @@ public final class HotkeyMonitor: @unchecked Sendable {
             }
         }
         guard effect != .none else { return }
-        Task { @MainActor in self.delegate?.hotkeyDidEmit(effect) }  // statically main-isolated; satisfies @MainActor delegate
+        // Read synchronously now: the machine state reflects the just-applied transition.
+        let mode = machine.recordingMode
+        Task { @MainActor in self.delegate?.hotkeyDidEmit(effect, mode: mode) }  // statically main-isolated; satisfies @MainActor delegate
     }
 
     private func startWatchdog() {

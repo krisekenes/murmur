@@ -63,6 +63,16 @@ final class DictationStateMachineTests: XCTestCase {
         XCTAssertEqual(m.state, .idle)
     }
 
+    func test_recordingMode_reflectsState() {
+        let m = machine()
+        XCTAssertNil(m.recordingMode)
+        _ = m.handle(.keyDown, at: 0.0)
+        XCTAssertEqual(m.recordingMode, .hold)
+        _ = m.handle(.keyUp, at: 0.1)
+        _ = m.handle(.keyDown, at: 0.25)
+        XCTAssertEqual(m.recordingMode, .locked)
+    }
+
     func test_lockedRecording_stopsOnKeyDown_evenIfArmingKeyUpMissing() {
         let m = machine()
         _ = m.handle(.keyDown, at: 0.0)

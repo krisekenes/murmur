@@ -94,4 +94,10 @@ extension DictationStateMachine {
     public var pendingTimeout: TimeInterval? {
         state == .awaitingSecondTap ? tuning.doubleTapWindow : nil
     }
+
+    /// The active recording mode, or nil if not currently recording.
+    public var recordingMode: HotkeyMode? {
+        if case .recording(let mode) = state { return mode }
+        return nil
+    }
 }
