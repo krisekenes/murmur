@@ -8,8 +8,8 @@ public struct HistoryView: View {
     public init(state: AppState) { self.state = state }
 
     private var filtered: [HistoryEntry] {
-        guard !query.isEmpty else { return state.history.entries }
-        return state.history.entries.filter { $0.polished.localizedCaseInsensitiveContains(query) }
+        guard !query.isEmpty else { return state.historyEntries }
+        return state.historyEntries.filter { $0.polished.localizedCaseInsensitiveContains(query) }
     }
 
     public var body: some View {
@@ -31,7 +31,7 @@ public struct HistoryView: View {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(entry.polished, forType: .string)
                     }
-                    .swipeActions { Button("Delete", role: .destructive) { state.history.delete(id: entry.id); state.recentPeek = Array(state.history.entries.prefix(3)) } }
+                    .swipeActions { Button("Delete", role: .destructive) { state.deleteDictation(id: entry.id) } }
                 }
             }
         }

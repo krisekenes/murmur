@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 struct MenuContent: View {
     @ObservedObject var state: AppState
+    @Environment(\.openWindow) private var openWindow
     var body: some View {
         Toggle("Polish with AI", isOn: $state.polishEnabled)
         Divider()
@@ -63,6 +64,7 @@ struct MenuContent: View {
             }
         }
         Divider()
+        Button("History…") { openWindow(id: "history") }
         SettingsLink { Text("Settings…") }
         Button("Quit Murmur") { NSApplication.shared.terminate(nil) }
     }

@@ -13,6 +13,8 @@ public final class AppState: ObservableObject {
         didSet { UserDefaults.standard.set(hotkey.rawValue, forKey: "hotkey") }
     }
     @Published public var recentPeek: [HistoryEntry] = []
+    @Published public var historyEntries: [HistoryEntry] = []
+    @Published public var inputLevel: Float = 0
 
     public let history: HistoryStore
     public let vocabulary: VocabularyStore
@@ -24,6 +26,19 @@ public final class AppState: ObservableObject {
             ?? (try! HistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("history.json")))
         vocabulary = (try? VocabularyStore(fileURL: support.appendingPathComponent("vocabulary.json")))
             ?? (try! VocabularyStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("vocabulary.json")))
+        recentPeek = Array(history.entries.prefix(3))
+        historyEntries = history.entries
+    }
+
+    public func appendDictation(_ entry: HistoryEntry) {
+        history.append(entry)
+        historyEntries = history.entries
+        recentPeek = Array(history.entries.prefix(3))
+    }
+
+    public func deleteDictation(id: UUID) {
+        history.delete(id: id)
+        historyEntries = history.entries
         recentPeek = Array(history.entries.prefix(3))
     }
 }

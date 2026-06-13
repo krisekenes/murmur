@@ -12,6 +12,7 @@ public final class DictationController: HotkeyMonitorDelegate {
     private var monitor: HotkeyMonitor?
     private var overlay: OverlayPanel?
     private var pendingHide: DispatchWorkItem?
+    private var levelTimer: Timer?
 
     public init(state: AppState) {
         self.state = state
@@ -42,14 +43,22 @@ public final class DictationController: HotkeyMonitorDelegate {
     public func hotkeyDidEmit(_ effect: DictationEffect, mode: HotkeyMode?) {
         switch effect {
         case .startRecording:
-            try? recorder.start()
+            do {
+                try recorder.start()
+            } catch {
+                state.phase = .error("Microphone unavailable")
+                return
+            }
             state.phase = .listening(locked: mode == .locked)
             showOverlay()
+            startLevelMetering()
         case .finishRecording:
             let samples = recorder.stop()
+            stopLevelMetering()
             runPipeline(samples)
         case .cancelRecording:
             recorder.cancel()
+            stopLevelMetering()
             state.phase = .idle
             hideOverlay()
         case .scheduleTimeout, .none:
@@ -67,11 +76,27 @@ public final class DictationController: HotkeyMonitorDelegate {
             state.phase = .polishing
             let polished = await polisher.polish(raw, vocabulary: state.vocabulary.words, enabled: state.polishEnabled)
             inserter.insert(polished)
-            state.history.append(HistoryEntry(id: UUID(), raw: raw, polished: polished, createdAt: Date(), appName: appName))
-            state.recentPeek = Array(state.history.entries.prefix(3))
+            state.appendDictation(HistoryEntry(id: UUID(), raw: raw, polished: polished, createdAt: Date(), appName: appName))
             state.phase = .idle
             hideOverlay()
         }
+    }
+
+    private func startLevelMetering() {
+        levelTimer?.invalidate()
+        levelTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            // Timer fires on the main run loop; the controller is @MainActor.
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.state.inputLevel = self.recorder.currentLevel
+            }
+        }
+    }
+
+    private func stopLevelMetering() {
+        levelTimer?.invalidate()
+        levelTimer = nil
+        state.inputLevel = 0
     }
 
     // MARK: Overlay (cancellable hide so a double-tap doesn't get hidden by a stale timer)

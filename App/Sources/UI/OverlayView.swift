@@ -20,7 +20,7 @@ public struct OverlayView: View {
     }
 
     private var level: Float {
-        if case .listening = state.phase { return 0.6 } else { return 0.1 }
+        if case .listening = state.phase { return max(0.08, state.inputLevel) } else { return 0.1 }
     }
     private var label: String {
         switch state.phase {
