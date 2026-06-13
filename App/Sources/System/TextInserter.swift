@@ -4,6 +4,7 @@ import MurmurCore
 
 public enum InsertOutcome: Sendable { case pasted, axInserted, leftOnClipboard }
 
+@MainActor
 public final class TextInserter {
     public init() {}
 
@@ -57,6 +58,7 @@ public final class TextInserter {
     // MARK: - Accessibility direct insertion
     private func axInsert(_ text: String) -> Bool {
         let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.5)
         var focused: CFTypeRef?
         guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
               let element = focused else { return false }

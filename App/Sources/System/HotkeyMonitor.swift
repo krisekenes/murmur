@@ -32,7 +32,7 @@ public final class HotkeyMonitor: @unchecked Sendable {
         self.machine = machine
     }
 
-    public func start() {
+    @MainActor public func start() {
         let mask = (1 << CGEventType.keyDown.rawValue)
                  | (1 << CGEventType.keyUp.rawValue)
                  | (1 << CGEventType.flagsChanged.rawValue)
@@ -87,6 +87,7 @@ public final class HotkeyMonitor: @unchecked Sendable {
     private func emit(_ effect: DictationEffect) {
         // Arm the double-tap timer when a window opens.
         doubleTapTimer?.invalidate()
+        // .timeout always moves the machine to .idle (pendingTimeout becomes nil), so this never self-arms forever.
         if let delay = machine.pendingTimeout {
             doubleTapTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
                 guard let self else { return }
