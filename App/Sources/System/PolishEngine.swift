@@ -53,21 +53,23 @@ public actor PolishEngine {
             generateParameters: GenerateParameters(maxTokens: 512, temperature: 0.3),
             additionalContext: ["enable_thinking": false]
         )
-        // Run generation in a Task; race it against a timeout Task.
-        // ChatSession is not Sendable so we run the work task here on the actor
-        // and cancel it if the timeout fires first.
-        let workTask = Task {
+        // Race generation against a hard timeout. `session` is not Sendable, but it
+        // is captured only by `work`, an actor-isolated Task; the task group's child
+        // closures capture only the Sendable `work` handle and `raw`. Whichever
+        // finishes first wins — so the wall-clock latency is bounded by `timeout`
+        // even if `session.respond` ignores cancellation. The losing generation is
+        // cancelled in the background.
+        let work = Task {
             (try? await session.respond(to: raw))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? raw
         }
         let timeoutNanos = UInt64(timeout * 1_000_000_000)
-        let timeoutTask = Task {
-            try? await Task.sleep(nanoseconds: timeoutNanos)
-            workTask.cancel()
+        return await withTaskGroup(of: String?.self) { group in
+            group.addTask { await work.value }
+            group.addTask { try? await Task.sleep(nanoseconds: timeoutNanos); return nil }
+            let first = (await group.next() ?? nil)   // String? : the work's text, or nil on timeout
+            group.cancelAll()
+            work.cancel()
+            return first ?? raw
         }
-        let result = await workTask.value
-        timeoutTask.cancel()
-        // If work was cancelled and returned raw from the nil path, that's fine.
-        // Either way we return a non-throwing String.
-        return result
     }
 }
