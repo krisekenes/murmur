@@ -1,0 +1,5 @@
+.build/
+DerivedData/
+Murmur.xcodeproj/
+*.xcuserstate
+.DS_Store
