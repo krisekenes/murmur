@@ -33,7 +33,10 @@ targets:
   Murmur:
     type: application
     platform: macOS
-    sources: [App/Sources]
+    sources: [App/Sources, App/Resources]
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: App/Info.plist
       properties:
