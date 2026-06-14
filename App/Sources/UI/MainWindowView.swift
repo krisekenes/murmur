@@ -5,6 +5,7 @@ import SwiftUI
 struct MainWindowView: View {
     @ObservedObject var state: AppState
     @State private var search = ""
+    @State private var selectedID: UUID?
     @FocusState private var searchFocused: Bool
     @Environment(\.openSettings) private var openSettings
 
@@ -13,14 +14,35 @@ struct MainWindowView: View {
             topBar
             Divider().opacity(0.5)
             HSplitView {
-                FeedView(state: state, search: $search)
+                FeedView(state: state, search: $search, selectedID: $selectedID)
                     .frame(minWidth: 240, idealWidth: 300, maxWidth: 440)
-                ScratchpadView(state: state)
+                rightPane
                     .frame(minWidth: 380)
             }
         }
         .frame(minWidth: 720, minHeight: 460)
         .background(Color(red: 0.05, green: 0.05, blue: 0.06))
+    }
+
+    /// The right pane shows the selected dictation for reading, or the scratchpad
+    /// when nothing is selected. Selecting never disturbs the scratchpad note.
+    @ViewBuilder private var rightPane: some View {
+        if let id = selectedID, let entry = state.historyEntries.first(where: { $0.id == id }) {
+            DictationDetailView(
+                entry: entry,
+                onClose: { selectedID = nil },
+                onCopy: { copy(entry.polished) },
+                onSend: { state.appendToScratchpad(entry.polished); selectedID = nil },
+                onDelete: { state.deleteDictation(id: id); selectedID = nil }
+            )
+        } else {
+            ScratchpadView(state: state)
+        }
+    }
+
+    private func copy(_ s: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
     }
 
     private var topBar: some View {

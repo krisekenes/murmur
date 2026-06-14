@@ -5,7 +5,7 @@ import MurmurCore
 struct FeedView: View {
     @ObservedObject var state: AppState
     @Binding var search: String
-    @State private var expandedID: UUID?
+    @Binding var selectedID: UUID?
 
     private var filtered: [HistoryEntry] {
         guard !search.isEmpty else { return state.historyEntries }
@@ -40,8 +40,8 @@ struct FeedView: View {
                             ForEach(group.entries) { entry in
                                 FeedCard(
                                     entry: entry,
-                                    isExpanded: expandedID == entry.id,
-                                    onTap: { expandedID = (expandedID == entry.id) ? nil : entry.id },
+                                    isSelected: selectedID == entry.id,
+                                    onTap: { selectedID = (selectedID == entry.id) ? nil : entry.id },
                                     onCopy: { copy(entry.polished) },
                                     onAppend: { state.appendToScratchpad(entry.polished) },
                                     onDelete: { state.deleteDictation(id: entry.id) }
@@ -73,7 +73,7 @@ struct FeedView: View {
 /// One dictation card in the feed.
 struct FeedCard: View {
     let entry: HistoryEntry
-    let isExpanded: Bool
+    let isSelected: Bool
     let onTap: () -> Void
     let onCopy: () -> Void
     let onAppend: () -> Void
@@ -85,7 +85,7 @@ struct FeedCard: View {
             Text(entry.polished)
                 .font(.system(size: 13))
                 .foregroundStyle(.primary)
-                .lineLimit(isExpanded ? nil : 3)
+                .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 7) {
                 Text(entry.createdAt, style: .time)
@@ -94,7 +94,7 @@ struct FeedCard: View {
                     .font(.system(size: 10))
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                if hover || isExpanded {
+                if hover || isSelected {
                     iconButton("arrow.right.to.line", help: "Send to scratchpad", action: onAppend)
                     iconButton("doc.on.doc", help: "Copy", action: onCopy)
                 }
@@ -104,16 +104,17 @@ struct FeedCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 11)
         .padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 9).fill(.white.opacity(isExpanded ? 0.09 : (hover ? 0.08 : 0.04))))
+        .background(RoundedRectangle(cornerRadius: 9).fill(.white.opacity(isSelected ? 0.10 : (hover ? 0.08 : 0.04))))
         .overlay(
             RoundedRectangle(cornerRadius: 9)
-                .strokeBorder((isExpanded || hover) ? Theme.accent.opacity(isExpanded ? 0.7 : 0.45) : .white.opacity(0.09))
+                .strokeBorder((isSelected || hover) ? Theme.accent.opacity(isSelected ? 0.8 : 0.45) : .white.opacity(0.09),
+                              lineWidth: isSelected ? 1.5 : 1)
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
         .onHover { hover = $0 }
         .animation(.easeOut(duration: 0.14), value: hover)
-        .animation(.easeOut(duration: 0.16), value: isExpanded)
+        .animation(.easeOut(duration: 0.16), value: isSelected)
         .contextMenu {
             Button("Send to Scratchpad", action: onAppend)
             Button("Copy", action: onCopy)
