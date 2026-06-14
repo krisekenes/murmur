@@ -10,15 +10,25 @@ struct ScratchpadView: View {
         state.pages.first(where: { $0.id == state.currentPageID })?.displayTitle ?? "Untitled"
     }
 
+    /// Selecting in the inline picker switches pages (and shows a checkmark on the current).
+    private var pageSelection: Binding<UUID> {
+        Binding(get: { state.currentPageID }, set: { state.selectPage($0) })
+    }
+
+    private func pageMenuLabel(_ page: ScratchpadPage) -> String {
+        "\(page.displayTitle)  ·  \(page.updatedAt.formatted(date: .omitted, time: .shortened))"
+    }
+
     private var pageHeader: some View {
         HStack(spacing: 8) {
             Menu {
-                ForEach(state.pages) { page in
-                    Button { state.selectPage(page.id) } label: {
-                        Label(page.displayTitle,
-                              systemImage: page.id == state.currentPageID ? "checkmark" : "doc.text")
+                Picker("Pages", selection: pageSelection) {
+                    ForEach(state.pages) { page in
+                        Text(pageMenuLabel(page)).tag(page.id)
                     }
                 }
+                .pickerStyle(.inline)
+                .labelsHidden()
                 Divider()
                 Button(role: .destructive) { state.deleteCurrentPage() } label: {
                     Label("Delete this page", systemImage: "trash")
