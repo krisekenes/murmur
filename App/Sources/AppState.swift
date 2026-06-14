@@ -16,12 +16,19 @@ public final class AppState: ObservableObject {
     @Published public var historyEntries: [HistoryEntry] = []
     @Published public var inputLevel: Float = 0
     @Published public var scratchpad: String = "" {
-        didSet { scratchpadStore.save(scratchpad) }
+        didSet {
+            guard !isLoadingPage else { return }
+            notebook.updateCurrent(content: scratchpad)
+            pages = notebook.pages
+        }
     }
+    @Published public var pages: [ScratchpadPage] = []
+    @Published public var currentPageID: UUID = UUID()
 
     public let history: HistoryStore
     public let vocabulary: VocabularyStore
-    public let scratchpadStore: ScratchpadStore
+    public let notebook: NotebookStore
+    private var isLoadingPage = false
 
     public init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -30,19 +37,37 @@ public final class AppState: ObservableObject {
             ?? (try! HistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("history.json")))
         vocabulary = (try? VocabularyStore(fileURL: support.appendingPathComponent("vocabulary.json")))
             ?? (try! VocabularyStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("vocabulary.json")))
-        scratchpadStore = ScratchpadStore(fileURL: support.appendingPathComponent("scratchpad.txt"))
+        notebook = NotebookStore(
+            fileURL: support.appendingPathComponent("notebook.json"),
+            legacyTextURL: support.appendingPathComponent("scratchpad.txt"))
         recentPeek = Array(history.entries.prefix(3))
         historyEntries = history.entries
-        scratchpad = scratchpadStore.text
+        pages = notebook.pages
+        currentPageID = notebook.currentID
+        isLoadingPage = true
+        scratchpad = notebook.currentContent
+        isLoadingPage = false
     }
 
-    /// Append a feed entry's text into the scratchpad on its own line.
+    /// Append a feed entry's text into the current scratchpad page on its own line.
     public func appendToScratchpad(_ text: String) {
         if scratchpad.isEmpty {
             scratchpad = text
         } else {
             scratchpad += (scratchpad.hasSuffix("\n") ? "" : "\n") + text
         }
+    }
+
+    public func newPage() { notebook.newPage(); loadCurrentPage() }
+    public func selectPage(_ id: UUID) { notebook.select(id); loadCurrentPage() }
+    public func deleteCurrentPage() { notebook.delete(currentPageID); loadCurrentPage() }
+
+    private func loadCurrentPage() {
+        pages = notebook.pages
+        currentPageID = notebook.currentID
+        isLoadingPage = true
+        scratchpad = notebook.currentContent
+        isLoadingPage = false
     }
 
     public func appendDictation(_ entry: HistoryEntry) {
