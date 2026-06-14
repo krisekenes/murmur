@@ -15,9 +15,13 @@ public final class AppState: ObservableObject {
     @Published public var recentPeek: [HistoryEntry] = []
     @Published public var historyEntries: [HistoryEntry] = []
     @Published public var inputLevel: Float = 0
+    @Published public var scratchpad: String = "" {
+        didSet { scratchpadStore.save(scratchpad) }
+    }
 
     public let history: HistoryStore
     public let vocabulary: VocabularyStore
+    public let scratchpadStore: ScratchpadStore
 
     public init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -26,8 +30,19 @@ public final class AppState: ObservableObject {
             ?? (try! HistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("history.json")))
         vocabulary = (try? VocabularyStore(fileURL: support.appendingPathComponent("vocabulary.json")))
             ?? (try! VocabularyStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("vocabulary.json")))
+        scratchpadStore = ScratchpadStore(fileURL: support.appendingPathComponent("scratchpad.txt"))
         recentPeek = Array(history.entries.prefix(3))
         historyEntries = history.entries
+        scratchpad = scratchpadStore.text
+    }
+
+    /// Append a feed entry's text into the scratchpad on its own line.
+    public func appendToScratchpad(_ text: String) {
+        if scratchpad.isEmpty {
+            scratchpad = text
+        } else {
+            scratchpad += (scratchpad.hasSuffix("\n") ? "" : "\n") + text
+        }
     }
 
     public func appendDictation(_ entry: HistoryEntry) {

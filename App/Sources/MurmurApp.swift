@@ -14,8 +14,9 @@ struct MurmurApp: App {
                 .foregroundStyle(isActive(appDelegate.state.phase) ? Theme.accent : Color.primary)
         }
 
-        Window("History", id: "history") { HistoryView(state: appDelegate.state) }
-            .windowResizability(.contentSize)
+        Window("Murmur", id: "main") { MainWindowView(state: appDelegate.state) }
+            .windowResizability(.contentMinSize)
+            .defaultSize(width: 860, height: 560)
         Settings { SettingsView(state: appDelegate.state) }
     }
 
@@ -74,6 +75,11 @@ struct MenuContent: View {
     @ObservedObject var state: AppState
     @Environment(\.openWindow) private var openWindow
     var body: some View {
+        Button("Open Murmur") {
+            openWindow(id: "main")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        Divider()
         Toggle("Polish with AI", isOn: $state.polishEnabled)
         Divider()
         if state.recentPeek.isEmpty {
@@ -87,7 +93,6 @@ struct MenuContent: View {
             }
         }
         Divider()
-        Button("History…") { openWindow(id: "history") }
         SettingsLink { Text("Settings…") }
         Button("Quit Murmur") { NSApplication.shared.terminate(nil) }
     }
