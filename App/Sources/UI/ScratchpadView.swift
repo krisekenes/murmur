@@ -9,11 +9,12 @@ struct ScratchpadView: View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
                 if state.scratchpad.isEmpty {
-                    Text("Dictate or type here. Everything you say lands and stays editable.")
-                        .font(.system(size: 15))
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 21)
-                        .padding(.vertical, 20)
+                    Text("Dictate or type here — everything you say lands and stays editable.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.quaternary)
+                        .frame(maxWidth: 340, alignment: .leading)
+                        .padding(.horizontal, 19)
+                        .padding(.vertical, 17)
                         .allowsHitTesting(false)
                 }
                 TextEditor(text: $state.scratchpad)
@@ -38,7 +39,7 @@ struct ScratchpadView: View {
             .controlSize(.small)
             .padding(10)
         }
-        .background(Color(red: 0.07, green: 0.07, blue: 0.085))
+        .background(Color(red: 0.06, green: 0.06, blue: 0.07))
     }
 
     private func copy() {

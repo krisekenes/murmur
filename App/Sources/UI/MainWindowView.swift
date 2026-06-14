@@ -5,6 +5,7 @@ import SwiftUI
 struct MainWindowView: View {
     @ObservedObject var state: AppState
     @State private var search = ""
+    @FocusState private var searchFocused: Bool
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -32,15 +33,22 @@ struct MainWindowView: View {
             Spacer(minLength: 16)
 
             HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(.tertiary)
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(searchFocused ? Theme.accent.opacity(0.9) : Color.secondary.opacity(0.7))
                 TextField("Search dictations", text: $search)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
                     .frame(maxWidth: 220)
+                    .focused($searchFocused)
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
             .background(RoundedRectangle(cornerRadius: 8).fill(.white.opacity(0.05)))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.07)))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(searchFocused ? Theme.accent.opacity(0.55) : .white.opacity(0.08))
+            )
+            .animation(.easeOut(duration: 0.15), value: searchFocused)
 
             StatusDot(phase: state.phase)
 

@@ -21,7 +21,7 @@ struct FeedView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 16) {
+            LazyVStack(alignment: .leading, spacing: 14) {
                 if filtered.isEmpty {
                     Text(search.isEmpty ? "No dictations yet" : "No matches")
                         .font(.callout)
@@ -30,11 +30,12 @@ struct FeedView: View {
                         .padding(.top, 48)
                 } else {
                     ForEach(groups, id: \.title) { group in
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 5) {
                             Text(group.title.uppercased())
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(.tertiary)
                                 .padding(.horizontal, 4)
+                                .padding(.bottom, 1)
                             ForEach(group.entries) { entry in
                                 FeedCard(
                                     entry: entry,
@@ -47,9 +48,9 @@ struct FeedView: View {
                     }
                 }
             }
-            .padding(12)
+            .padding(10)
         }
-        .background(.ultraThinMaterial)
+        .background(Color(red: 0.085, green: 0.085, blue: 0.095))
     }
 
     private func copy(_ s: String) {
@@ -75,13 +76,13 @@ struct FeedCard: View {
     @State private var hover = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             Text(entry.polished)
                 .font(.system(size: 13))
                 .foregroundStyle(.primary)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
+            HStack(spacing: 7) {
                 Text(entry.createdAt, style: .time)
                     .font(.system(size: 10, design: .monospaced))
                 Text(entry.appName)
@@ -95,9 +96,13 @@ struct FeedCard: View {
             }
             .foregroundStyle(.secondary)
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(.white.opacity(hover ? 0.07 : 0.03)))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.white.opacity(0.06)))
+        .padding(.horizontal, 11)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 9).fill(.white.opacity(hover ? 0.08 : 0.04)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(hover ? Theme.accent.opacity(0.45) : .white.opacity(0.09))
+        )
         .onHover { hover = $0 }
         .animation(.easeOut(duration: 0.12), value: hover)
         .contextMenu {
