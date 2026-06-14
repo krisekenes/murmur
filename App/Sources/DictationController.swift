@@ -14,6 +14,8 @@ public final class DictationController: HotkeyMonitorDelegate {
     private var pendingHide: DispatchWorkItem?
     private var levelTimer: Timer?
     private var transcriberReady = false
+    private var lastInsertAt: Date?
+    private var lastInsertApp: String?
 
     public init(state: AppState) {
         self.state = state
@@ -86,7 +88,14 @@ public final class DictationController: HotkeyMonitorDelegate {
             guard !raw.isEmpty else { state.phase = .idle; hideOverlay(); return }
             state.phase = .polishing
             let polished = await polisher.polish(raw, vocabulary: state.vocabulary.words, enabled: state.polishEnabled)
-            inserter.insert(polished)
+            // Prepend a space when continuing dictation into the same app, so sentences are
+            // separated. A leading space (between content) renders in native and web fields
+            // alike; a trailing space gets collapsed by web inputs.
+            let isContinuation = lastInsertApp == appName
+                && (lastInsertAt.map { Date().timeIntervalSince($0) < 30 } ?? false)
+            inserter.insert((isContinuation ? " " : "") + polished)
+            lastInsertAt = Date()
+            lastInsertApp = appName
             state.appendDictation(HistoryEntry(id: UUID(), raw: raw, polished: polished, createdAt: Date(), appName: appName))
             state.phase = .idle
             hideOverlay()

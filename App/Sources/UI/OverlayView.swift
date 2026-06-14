@@ -20,7 +20,8 @@ public struct OverlayView: View {
     }
 
     private var level: Float {
-        if case .listening = state.phase { return max(0.08, state.inputLevel) } else { return 0.1 }
+        // inputLevel is raw RMS (~0.01–0.1 for speech); amplify so the bars visibly track the voice.
+        if case .listening = state.phase { return max(0.06, min(1, state.inputLevel * 10)) } else { return 0.1 }
     }
     private var label: String {
         switch state.phase {
@@ -35,22 +36,29 @@ public struct OverlayView: View {
 struct WaveformBars: View {
     let level: Float
     let animated: Bool
-    @State private var phase = 0.0
+    @State private var history: [CGFloat] = Array(repeating: 0.12, count: 16)
+
     var body: some View {
-        Canvas { ctx, size in
-            let bars = 16
-            let w = size.width / CGFloat(bars * 2)
-            for i in 0..<bars {
-                let n = animated ? (sin(phase + Double(i) * 0.6) * 0.5 + 0.5) : 0.5
-                let h = max(2, CGFloat(n) * CGFloat(level) * size.height)
-                let x = CGFloat(i) * w * 2 + w
-                let rect = CGRect(x: x, y: (size.height - h) / 2, width: w, height: h)
-                ctx.fill(Path(roundedRect: rect, cornerRadius: w / 2), with: .color(Theme.accent))
+        GeometryReader { geo in
+            HStack(spacing: 2) {
+                ForEach(history.indices, id: \.self) { i in
+                    Capsule()
+                        .fill(Theme.accent)
+                        .frame(height: max(3, history[i] * geo.size.height))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                }
             }
         }
-        .onAppear {
-            guard animated else { return }
-            withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) { phase = .pi * 2 }
+        .onChange(of: level) { _, newValue in
+            // Scroll the real input level across the bars for a voice-reactive bounce.
+            var next = history
+            next.removeFirst()
+            next.append(min(1, max(0.06, CGFloat(newValue) * 1.3)))
+            if animated {
+                withAnimation(.spring(response: 0.16, dampingFraction: 0.5)) { history = next }
+            } else {
+                history = next
+            }
         }
     }
 }

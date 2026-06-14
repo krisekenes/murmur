@@ -10,8 +10,10 @@ public final class TextInserter {
 
     @discardableResult
     public func insert(_ text: String) -> InsertOutcome {
-        if axInsert(text) { return .axInserted }      // try direct insert first; no clipboard churn
+        // Synthetic ⌘V is the reliable universal path. AX setSelectedText reports success
+        // but silently no-ops in Chromium/Electron, so it's only a fallback if paste fails.
         if paste(text) { return .pasted }
+        if axInsert(text) { return .axInserted }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         return .leftOnClipboard
