@@ -5,6 +5,7 @@ import MurmurCore
 struct FeedView: View {
     @ObservedObject var state: AppState
     @Binding var search: String
+    @State private var expandedID: UUID?
 
     private var filtered: [HistoryEntry] {
         guard !search.isEmpty else { return state.historyEntries }
@@ -39,6 +40,8 @@ struct FeedView: View {
                             ForEach(group.entries) { entry in
                                 FeedCard(
                                     entry: entry,
+                                    isExpanded: expandedID == entry.id,
+                                    onTap: { expandedID = (expandedID == entry.id) ? nil : entry.id },
                                     onCopy: { copy(entry.polished) },
                                     onAppend: { state.appendToScratchpad(entry.polished) },
                                     onDelete: { state.deleteDictation(id: entry.id) }
@@ -70,6 +73,8 @@ struct FeedView: View {
 /// One dictation card in the feed.
 struct FeedCard: View {
     let entry: HistoryEntry
+    let isExpanded: Bool
+    let onTap: () -> Void
     let onCopy: () -> Void
     let onAppend: () -> Void
     let onDelete: () -> Void
@@ -80,7 +85,7 @@ struct FeedCard: View {
             Text(entry.polished)
                 .font(.system(size: 13))
                 .foregroundStyle(.primary)
-                .lineLimit(3)
+                .lineLimit(isExpanded ? nil : 3)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 7) {
                 Text(entry.createdAt, style: .time)
@@ -89,22 +94,26 @@ struct FeedCard: View {
                     .font(.system(size: 10))
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                if hover {
+                if hover || isExpanded {
                     iconButton("arrow.right.to.line", help: "Send to scratchpad", action: onAppend)
                     iconButton("doc.on.doc", help: "Copy", action: onCopy)
                 }
             }
             .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 11)
         .padding(.vertical, 8)
-        .background(RoundedRectangle(cornerRadius: 9).fill(.white.opacity(hover ? 0.08 : 0.04)))
+        .background(RoundedRectangle(cornerRadius: 9).fill(.white.opacity(isExpanded ? 0.09 : (hover ? 0.08 : 0.04))))
         .overlay(
             RoundedRectangle(cornerRadius: 9)
-                .strokeBorder(hover ? Theme.accent.opacity(0.45) : .white.opacity(0.09))
+                .strokeBorder((isExpanded || hover) ? Theme.accent.opacity(isExpanded ? 0.7 : 0.45) : .white.opacity(0.09))
         )
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
         .onHover { hover = $0 }
-        .animation(.easeOut(duration: 0.12), value: hover)
+        .animation(.easeOut(duration: 0.14), value: hover)
+        .animation(.easeOut(duration: 0.16), value: isExpanded)
         .contextMenu {
             Button("Send to Scratchpad", action: onAppend)
             Button("Copy", action: onCopy)
