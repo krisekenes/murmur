@@ -1,0 +1,133 @@
+import SwiftUI
+import MurmurCore
+
+/// The feed pane: a searchable, date-grouped list of past dictations.
+struct FeedView: View {
+    @ObservedObject var state: AppState
+    @Binding var search: String
+    @Binding var selectedID: UUID?
+
+    private var filtered: [HistoryEntry] {
+        guard !search.isEmpty else { return state.historyEntries }
+        return state.historyEntries.filter { $0.polished.localizedCaseInsensitiveContains(search) }
+    }
+
+    private var groups: [(title: String, entries: [HistoryEntry])] {
+        let cal = Calendar.current
+        let grouped = Dictionary(grouping: filtered) { cal.startOfDay(for: $0.createdAt) }
+        return grouped.keys.sorted(by: >).map { day in
+            (title: Self.dayTitle(day, calendar: cal), entries: grouped[day]!.sorted { $0.createdAt > $1.createdAt })
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 14) {
+                if filtered.isEmpty {
+                    Text(search.isEmpty ? "No dictations yet" : "No matches")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 48)
+                } else {
+                    ForEach(groups, id: \.title) { group in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(group.title.uppercased())
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                                .padding(.horizontal, 4)
+                                .padding(.bottom, 1)
+                            ForEach(group.entries) { entry in
+                                FeedCard(
+                                    entry: entry,
+                                    isSelected: selectedID == entry.id,
+                                    onTap: { selectedID = (selectedID == entry.id) ? nil : entry.id },
+                                    onCopy: { copy(entry.polished) },
+                                    onAppend: { state.appendToScratchpad(entry.polished) },
+                                    onDelete: { state.deleteDictation(id: entry.id) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(10)
+        }
+        .background(Color(red: 0.085, green: 0.085, blue: 0.095))
+    }
+
+    private func copy(_ s: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(s, forType: .string)
+    }
+
+    private static func dayTitle(_ day: Date, calendar: Calendar) -> String {
+        if calendar.isDateInToday(day) { return "Today" }
+        if calendar.isDateInYesterday(day) { return "Yesterday" }
+        let f = DateFormatter()
+        f.dateFormat = calendar.isDate(day, equalTo: Date(), toGranularity: .year) ? "EEEE, MMM d" : "MMM d, yyyy"
+        return f.string(from: day)
+    }
+}
+
+/// One dictation card in the feed.
+struct FeedCard: View {
+    let entry: HistoryEntry
+    let isSelected: Bool
+    let onTap: () -> Void
+    let onCopy: () -> Void
+    let onAppend: () -> Void
+    let onDelete: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(entry.polished)
+                .font(.system(size: 13))
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 7) {
+                Text(entry.createdAt, style: .time)
+                    .font(.system(size: 10, design: .monospaced))
+                Text(entry.appName)
+                    .font(.system(size: 10))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if hover || isSelected {
+                    iconButton("arrow.right.to.line", help: "Send to scratchpad", action: onAppend)
+                    iconButton("doc.on.doc", help: "Copy", action: onCopy)
+                }
+            }
+            .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 9).fill(.white.opacity(isSelected ? 0.10 : (hover ? 0.08 : 0.04))))
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder((isSelected || hover) ? Theme.accent.opacity(isSelected ? 0.8 : 0.45) : .white.opacity(0.09),
+                              lineWidth: isSelected ? 1.5 : 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
+        .onHover { hover = $0 }
+        .animation(.easeOut(duration: 0.14), value: hover)
+        .animation(.easeOut(duration: 0.16), value: isSelected)
+        .contextMenu {
+            Button("Send to Scratchpad", action: onAppend)
+            Button("Copy", action: onCopy)
+            Divider()
+            Button("Delete", role: .destructive, action: onDelete)
+        }
+    }
+
+    private func iconButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 11))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+    }
+}

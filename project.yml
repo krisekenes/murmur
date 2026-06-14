@@ -1,0 +1,63 @@
+name: Murmur
+options:
+  bundleIdPrefix: com.murmur
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+packages:
+  MurmurCore:
+    path: MurmurCore
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio.git
+    exactVersion: 0.15.2
+  mlx-swift-lm:
+    url: https://github.com/ml-explore/mlx-swift-lm
+    minVersion: 3.31.3
+    maxVersion: 4.0.0
+  swift-huggingface:
+    url: https://github.com/huggingface/swift-huggingface
+    minVersion: 0.9.0
+    maxVersion: 1.0.0
+  swift-transformers:
+    url: https://github.com/huggingface/swift-transformers
+    minVersion: 1.3.0
+    maxVersion: 2.0.0
+targets:
+  Murmur:
+    type: application
+    platform: macOS
+    sources: [App/Sources, App/Resources]
+    settings:
+      base:
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: App/Info.plist
+      properties:
+        LSUIElement: true
+        NSMicrophoneUsageDescription: "Murmur transcribes your speech locally. Audio never leaves your Mac."
+        CFBundleDisplayName: Murmur
+    entitlements:
+      path: App/Murmur.entitlements
+      properties:
+        com.apple.security.device.audio-input: true
+    dependencies:
+      - package: MurmurCore
+      - package: FluidAudio
+        product: FluidAudio
+      - package: mlx-swift-lm
+        product: MLXLLM
+      - package: mlx-swift-lm
+        product: MLXLMCommon
+      - package: mlx-swift-lm
+        product: MLXHuggingFace
+      - package: swift-huggingface
+        product: HuggingFace
+      - package: swift-transformers
+        product: Tokenizers

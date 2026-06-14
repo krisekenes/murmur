@@ -228,7 +228,8 @@ Murmur.xcodeproj/
 
 - [ ] **Step 6: Generate and build the app**
 
-Run: `xcodegen generate && xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodegen generate && xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
+> Note: `-skipMacroValidation` is required because mlx-swift-lm's `MLXHuggingFace` pulls in a Swift macro plugin that `xcodebuild` otherwise blocks for trust approval at the CLI. All app-target builds below use this flag.
 Expected: BUILD SUCCEEDED. (First run resolves SwiftPM packages; may take several minutes.)
 
 - [ ] **Step 7: Commit**
@@ -963,7 +964,7 @@ public final class HotkeyMonitor: @unchecked Sendable {
 
 - [ ] **Step 2: Build**
 
-Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
 Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 3: Manual verification** (record result in the task)
@@ -1043,7 +1044,7 @@ public final class AudioRecorder {
 
 - [ ] **Step 2: Build**
 
-Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
 Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 3: Commit**
@@ -1107,7 +1108,7 @@ public actor TranscriptionEngine {
 
 - [ ] **Step 2: Build**
 
-Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
 Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 3: Commit**
@@ -1198,7 +1199,7 @@ public actor PolishEngine {
 
 - [ ] **Step 2: Build** (requires the MetalToolchain prerequisite)
 
-Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
 Expected: BUILD SUCCEEDED. If it fails with a metallib error at runtime later, confirm `xcodebuild -showComponent MetalToolchain` shows installed.
 
 - [ ] **Step 3: Commit**
@@ -1295,7 +1296,7 @@ public final class TextInserter {
 
 - [ ] **Step 2: Build**
 
-Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
 Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 3: Commit**
@@ -1412,7 +1413,7 @@ struct MenuContent: View {
 
 - [ ] **Step 3: Build**
 
-Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
 Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 4: Commit**
@@ -1544,7 +1545,7 @@ struct WaveformBars: View {
 
 - [ ] **Step 4: Build**
 
-Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
 Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 5: Commit**
@@ -1609,7 +1610,7 @@ public struct HistoryView: View {
 
 - [ ] **Step 2: Build, then commit**
 
-Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
 Expected: BUILD SUCCEEDED.
 ```bash
 git add App/Sources/UI/HistoryView.swift
@@ -1699,7 +1700,7 @@ struct AboutTab: View {
 
 - [ ] **Step 2: Build, then commit**
 
-Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
 Expected: BUILD SUCCEEDED.
 ```bash
 git add App/Sources/UI/SettingsView.swift
@@ -1789,7 +1790,7 @@ public struct OnboardingView: View {
 
 - [ ] **Step 3: Build, then commit**
 
-Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
 Expected: BUILD SUCCEEDED.
 ```bash
 git add App/Sources/UI/OnboardingView.swift App/Sources/System/Permissions.swift
@@ -1912,7 +1913,7 @@ and attach a launch hook on the menu label or a hidden `.task`:
 
 - [ ] **Step 3: Build**
 
-Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
 Expected: BUILD SUCCEEDED.
 
 - [ ] **Step 4: Commit**
@@ -1950,7 +1951,7 @@ and add:
 
 - [ ] **Step 2: Build, then commit**
 
-Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' build`
+Run: `xcodebuild -scheme Murmur -destination 'platform=macOS' -skipMacroValidation build`
 Expected: BUILD SUCCEEDED.
 ```bash
 git add App/Sources/MurmurApp.swift
