@@ -79,6 +79,16 @@ struct MenuContent: View {
             openWindow(id: "main")
             NSApp.activate(ignoringOtherApps: true)
         }
+        if case .error(let message) = state.phase {
+            Text(message)
+        }
+        if case .downloading(let progress) = state.phase {
+            Text("Preparing models: \(Int(progress * 100))%")
+        }
+        if let notice = state.notice { Text(notice) }
+        if state.canRetryModels {
+            Button("Retry model loading") { state.retryModels?() }
+        }
         Divider()
         Toggle("Polish with AI", isOn: $state.polishEnabled)
         Divider()

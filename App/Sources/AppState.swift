@@ -5,6 +5,9 @@ import MurmurCore
 public final class AppState: ObservableObject {
     public enum Phase: Equatable { case idle, listening(locked: Bool), transcribing, polishing, downloading(Double), error(String) }
 
+    @Published public var notice: String?
+    @Published public var canRetryModels = false
+    public var retryModels: (() -> Void)?
     @Published public var phase: Phase = .idle
     @Published public var polishEnabled: Bool = UserDefaults.standard.object(forKey: "polishEnabled") as? Bool ?? true {
         didSet { UserDefaults.standard.set(polishEnabled, forKey: "polishEnabled") }

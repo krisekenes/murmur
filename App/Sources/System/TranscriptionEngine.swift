@@ -11,6 +11,7 @@ public actor TranscriptionEngine {
 
     /// Call once at launch (cold CoreML compile happens here, ~3s).
     public func load(progress: (@Sendable (Double) -> Void)? = nil) async {
+        if case .ready = loadState { return }
         loadState = .loading
         do {
             let progressHandler: DownloadUtils.ProgressHandler? = progress.map { cb -> DownloadUtils.ProgressHandler in

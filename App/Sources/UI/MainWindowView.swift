@@ -12,6 +12,14 @@ struct MainWindowView: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
+            if case .downloading(let progress) = state.phase {
+                ProgressView("Preparing models…", value: progress).padding()
+            }
+            if case .error(let message) = state.phase {
+                statusMessage(message)
+            } else if let notice = state.notice {
+                statusMessage(notice)
+            }
             Divider().opacity(0.5)
             HSplitView {
                 FeedView(state: state, search: $search, selectedID: $selectedID)
@@ -22,6 +30,16 @@ struct MainWindowView: View {
         }
         .frame(minWidth: 720, minHeight: 460)
         .background(Color(red: 0.05, green: 0.05, blue: 0.06))
+    }
+
+    private func statusMessage(_ message: String) -> some View {
+        HStack {
+            Text(message).font(.callout).textSelection(.enabled)
+            Spacer()
+            if state.canRetryModels {
+                Button("Retry model loading") { state.retryModels?() }
+            }
+        }.padding(12)
     }
 
     /// The right pane shows the selected dictation for reading, or the scratchpad

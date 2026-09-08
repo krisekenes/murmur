@@ -27,6 +27,13 @@ public struct OnboardingView: View {
             Spacer()
             Button("Finish") { onComplete() }.disabled(!(micOK && axOK)).keyboardShortcut(.defaultAction)
         }
+        .task {
+            while !Task.isCancelled {
+                micOK = Permissions.microphoneGranted
+                axOK = Permissions.accessibilityGranted
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
         .padding(24).frame(width: 460, height: 360)
     }
 

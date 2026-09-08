@@ -11,6 +11,8 @@ public final class AudioRecorder: @unchecked Sendable {
     private let lock = OSAllocatedUnfairLock(initialState: [Float]())
     private var isRunning = false
 
+    public enum RecordingError: Error { case noInput }
+
     public init() {}
 
     public func start() throws {
@@ -18,6 +20,9 @@ public final class AudioRecorder: @unchecked Sendable {
         lock.withLock { $0.removeAll(keepingCapacity: true) }
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            throw RecordingError.noInput
+        }
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
             guard let self else { return }
             if let converted = try? self.converter.resampleBuffer(buffer) {
@@ -25,7 +30,13 @@ public final class AudioRecorder: @unchecked Sendable {
             }
         }
         engine.prepare()
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            input.removeTap(onBus: 0)
+            engine.stop()
+            throw error
+        }
         isRunning = true
     }
 
@@ -36,7 +47,11 @@ public final class AudioRecorder: @unchecked Sendable {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         isRunning = false
-        return lock.withLock { $0 }
+        return lock.withLock { samples in
+            let result = samples
+            samples = []
+            return result
+        }
     }
 
     /// Discards in-flight audio (cancel path).

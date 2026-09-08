@@ -32,7 +32,23 @@ public final class HotkeyMonitor: @unchecked Sendable {
         self.machine = machine
     }
 
+    public func stop() {
+        doubleTapTimer?.invalidate()
+        doubleTapTimer = nil
+        watchdog?.invalidate()
+        watchdog = nil
+        if let eventTap { CGEvent.tapEnable(tap: eventTap, enable: false) }
+        if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
+        if let eventTap { CFMachPortInvalidate(eventTap) }
+        runLoopSource = nil
+        eventTap = nil
+        delegate = nil
+    }
+
+    deinit { stop() }
+
     @MainActor public func start() {
+        guard eventTap == nil else { return }
         let mask = (1 << CGEventType.keyDown.rawValue)
                  | (1 << CGEventType.keyUp.rawValue)
                  | (1 << CGEventType.flagsChanged.rawValue)

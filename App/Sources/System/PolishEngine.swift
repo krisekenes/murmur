@@ -10,6 +10,7 @@ public actor PolishEngine {
     public enum LoadState: Sendable { case unloaded, loading, ready, failed(String) }
     public private(set) var loadState: LoadState = .unloaded
 
+    private var generating = false
     private var container: ModelContainer?
     private let builder: PolishPromptBuilder
     private let timeout: TimeInterval
@@ -20,6 +21,7 @@ public actor PolishEngine {
     }
 
     public func load(progress: (@Sendable (Double) -> Void)? = nil) async {
+        if case .ready = loadState { return }
         loadState = .loading
         do {
             let c: ModelContainer
@@ -43,7 +45,7 @@ public actor PolishEngine {
     /// Returns polished text, or the raw transcript unchanged if polishing is
     /// skipped (too short), disabled, times out, or errors. Never throws.
     public func polish(_ raw: String, vocabulary: [String], enabled: Bool) async -> String {
-        guard enabled, builder.shouldPolish(raw), let container, case .ready = loadState else {
+        guard !generating, enabled, builder.shouldPolish(raw), let container, case .ready = loadState else {
             return raw
         }
         let system = builder.systemPrompt(vocabulary: vocabulary)
@@ -53,23 +55,14 @@ public actor PolishEngine {
             generateParameters: GenerateParameters(maxTokens: 512, temperature: 0.3),
             additionalContext: ["enable_thinking": false]
         )
-        // Race generation against a hard timeout. `session` is not Sendable, but it
-        // is captured only by `work`, an actor-isolated Task; the task group's child
-        // closures capture only the Sendable `work` handle and `raw`. Whichever
-        // finishes first wins — so the wall-clock latency is bounded by `timeout`
-        // even if `session.respond` ignores cancellation. The losing generation is
-        // cancelled in the background.
+        // Keep only one generation in flight, even if cancellation is delayed.
+        generating = true
         let work = Task {
-            (try? await session.respond(to: raw))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? raw
+            defer { generating = false }
+            let result = (try? await session.respond(to: raw))?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? raw
+            return result.isEmpty ? raw : result
         }
-        let timeoutNanos = UInt64(timeout * 1_000_000_000)
-        return await withTaskGroup(of: String?.self) { group in
-            group.addTask { await work.value }
-            group.addTask { try? await Task.sleep(nanoseconds: timeoutNanos); return nil }
-            let first = (await group.next() ?? nil)   // String? : the work's text, or nil on timeout
-            group.cancelAll()
-            work.cancel()
-            return first ?? raw
-        }
+        return await timedResult(of: work, timeout: .seconds(timeout), fallback: raw)
     }
 }

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Combine
 import MurmurCore
 
 @MainActor
@@ -14,6 +15,11 @@ public final class DictationController: HotkeyMonitorDelegate {
     private var pendingHide: DispatchWorkItem?
     private var levelTimer: Timer?
     private var transcriberReady = false
+    private var loadingModels = false
+    private var loadStage = UUID()
+    private var hotkeySubscription: AnyCancellable?
+    private var pipelineRunning = false
+    private var recording = false
     private var lastInsertAt: Date?
     private var lastInsertApp: String?
 
@@ -23,31 +29,66 @@ public final class DictationController: HotkeyMonitorDelegate {
     }
 
     public func startServices() {
-        let monitor = HotkeyMonitor(choice: state.hotkey)
-        monitor.delegate = self
-        monitor.start()
-        self.monitor = monitor
+        restartHotkey()
+        hotkeySubscription = state.$hotkey.dropFirst().removeDuplicates().sink { [weak self] choice in
+            self?.restartHotkey(choice: choice)
+        }
+        state.retryModels = { [weak self] in
+            guard let self else { return }
+            Task { await self.loadModels() }
+        }
         Task { await loadModels() }
     }
 
-    public func restartHotkey() {
-        monitor?.delegate = nil
-        let monitor = HotkeyMonitor(choice: state.hotkey)
+    public func restartHotkey(choice: HotkeyChoice? = nil) {
+        monitor?.stop()
+        if recording {
+            recorder.cancel()
+            recording = false
+            stopLevelMetering()
+            state.phase = .idle
+            hideOverlay()
+        }
+        let monitor = HotkeyMonitor(choice: choice ?? state.hotkey)
         monitor.delegate = self
         monitor.start()
         self.monitor = monitor
     }
 
     private func loadModels() async {
+        guard !loadingModels, !recording, !pipelineRunning else { return }
+        loadingModels = true
+        transcriberReady = false
+        state.canRetryModels = false
+        state.notice = nil
+        defer { loadingModels = false; loadStage = UUID() }
         state.phase = .downloading(0)
-        await transcriber.load { p in Task { @MainActor in self.state.phase = .downloading(p * 0.5) } }
+        loadStage = UUID()
+        let speechStage = loadStage
+        await transcriber.load { p in
+            Task { @MainActor in
+                guard self.loadStage == speechStage else { return }
+                self.state.phase = .downloading(p * 0.5)
+            }
+        }
         if case .failed(let msg) = await transcriber.loadState {
             state.phase = .error("Speech model failed to load: \(msg)")
+            state.canRetryModels = true
             return
         }
+        loadStage = UUID()
+        let polishStage = loadStage
+        await polisher.load { p in
+            Task { @MainActor in
+                guard self.loadStage == polishStage else { return }
+                self.state.phase = .downloading(0.5 + p * 0.5)
+            }
+        }
+        if case .failed = await polisher.loadState {
+            state.notice = "AI cleanup is unavailable. You can still dictate without it."
+            state.canRetryModels = true
+        }
         transcriberReady = true
-        await polisher.load { p in Task { @MainActor in self.state.phase = .downloading(0.5 + p * 0.5) } }
-        // Polish is optional; if it fails we still dictate (raw transcript), so don't hard-error.
         state.phase = .idle
     }
 
@@ -56,20 +97,27 @@ public final class DictationController: HotkeyMonitorDelegate {
         guard transcriberReady else { return }
         switch effect {
         case .startRecording:
+            guard !pipelineRunning, !recording else { return }
             do {
                 try recorder.start()
             } catch {
                 state.phase = .error("Microphone unavailable")
                 return
             }
+            state.notice = nil
+            recording = true
             state.phase = .listening(locked: mode == .locked)
             showOverlay()
             startLevelMetering()
         case .finishRecording:
+            guard recording else { return }
+            recording = false
             let samples = recorder.stop()
             stopLevelMetering()
             runPipeline(samples)
         case .cancelRecording:
+            guard recording else { return }
+            recording = false
             recorder.cancel()
             stopLevelMetering()
             state.phase = .idle
@@ -81,10 +129,19 @@ public final class DictationController: HotkeyMonitorDelegate {
 
     private func runPipeline(_ samples: [Float]) {
         let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "Unknown"
+        let targetPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        pipelineRunning = true
         Task {
+            defer { pipelineRunning = false }
             state.phase = .transcribing
-            let raw = ((try? await transcriber.transcribe(samples)) ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let raw: String
+            do {
+                raw = try await transcriber.transcribe(samples).trimmingCharacters(in: .whitespacesAndNewlines)
+            } catch {
+                state.phase = .error("Transcription failed: \(error.localizedDescription)")
+                hideOverlay()
+                return
+            }
             guard !raw.isEmpty else { state.phase = .idle; hideOverlay(); return }
             state.phase = .polishing
             let polished = await polisher.polish(raw, vocabulary: state.vocabulary.words, enabled: state.polishEnabled)
@@ -93,9 +150,24 @@ public final class DictationController: HotkeyMonitorDelegate {
             // alike; a trailing space gets collapsed by web inputs.
             let isContinuation = lastInsertApp == appName
                 && (lastInsertAt.map { Date().timeIntervalSince($0) < 30 } ?? false)
-            inserter.insert((isContinuation ? " " : "") + polished)
-            lastInsertAt = Date()
-            lastInsertApp = appName
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier == targetPID {
+                let outcome = inserter.insert((isContinuation ? " " : "") + polished)
+                if case .leftOnClipboard = outcome {
+                    state.notice = "Text copied to clipboard. Press Command-V to paste it."
+                    lastInsertAt = nil
+                    lastInsertApp = nil
+                } else {
+                    lastInsertAt = Date()
+                    lastInsertApp = appName
+                }
+            } else {
+                // Never paste into a different app after the user switches away.
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(polished, forType: .string)
+                state.notice = "App changed. Text copied to clipboard; press Command-V to paste it."
+                lastInsertAt = nil
+                lastInsertApp = nil
+            }
             state.appendDictation(HistoryEntry(id: UUID(), raw: raw, polished: polished, createdAt: Date(), appName: appName))
             state.phase = .idle
             hideOverlay()

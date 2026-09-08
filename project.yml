@@ -7,6 +7,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
+    ARCHS: arm64
+    ENABLE_HARDENED_RUNTIME: YES
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""
@@ -43,6 +45,8 @@ targets:
         LSUIElement: true
         NSMicrophoneUsageDescription: "Murmur transcribes your speech locally. Audio never leaves your Mac."
         CFBundleDisplayName: Murmur
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
     entitlements:
       path: App/Murmur.entitlements
       properties:

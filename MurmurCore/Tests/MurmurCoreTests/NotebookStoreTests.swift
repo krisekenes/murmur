@@ -6,6 +6,21 @@ final class NotebookStoreTests: XCTestCase {
         FileManager.default.temporaryDirectory.appendingPathComponent("notebook-\(UUID()).json")
     }
 
+    func test_preservesCorruptNotebookBeforeReplacingIt() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("notebook.json")
+        let original = Data("broken notebook".utf8)
+        try original.write(to: url)
+        let store = NotebookStore(fileURL: url)
+        store.updateCurrent(content: "new note")
+        let backup = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            .first { $0.pathExtension == "corrupt" })
+        XCTAssertEqual(try Data(contentsOf: backup), original)
+        XCTAssertEqual(NotebookStore(fileURL: url).currentContent, "new note")
+    }
+
     func test_startsWithOnePage() {
         let store = NotebookStore(fileURL: tempURL())
         XCTAssertEqual(store.pages.count, 1)

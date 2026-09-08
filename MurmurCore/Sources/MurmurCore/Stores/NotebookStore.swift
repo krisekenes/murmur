@@ -30,6 +30,7 @@ public final class NotebookStore {
     public private(set) var pages: [ScratchpadPage]
     public private(set) var currentID: UUID
     private let fileURL: URL
+    private var persistenceBlocked = false
 
     public init(fileURL: URL, legacyTextURL: URL? = nil, now: Date = Date()) {
         self.fileURL = fileURL
@@ -39,6 +40,18 @@ public final class NotebookStore {
             pages = nb.pages
             currentID = nb.pages.contains(where: { $0.id == nb.currentID }) ? nb.currentID : nb.pages[0].id
         } else {
+            // Preserve unreadable notebooks before creating a replacement.
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                let backup = fileURL.appendingPathExtension("\(UUID().uuidString).corrupt")
+                do { try FileManager.default.copyItem(at: fileURL, to: backup) }
+                catch {
+                    let page = ScratchpadPage(content: "", updatedAt: now)
+                    pages = [page]
+                    currentID = page.id
+                    persistenceBlocked = true
+                    return
+                }
+            }
             let legacy = legacyTextURL.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
             let page = ScratchpadPage(content: legacy, updatedAt: now)
             pages = [page]
@@ -87,7 +100,7 @@ public final class NotebookStore {
     }
 
     private func persist() {
-        guard let data = try? JSONEncoder().encode(Notebook(pages: pages, currentID: currentID)) else { return }
+        guard !persistenceBlocked, let data = try? JSONEncoder().encode(Notebook(pages: pages, currentID: currentID)) else { return }
         try? FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: fileURL, options: .atomic)
