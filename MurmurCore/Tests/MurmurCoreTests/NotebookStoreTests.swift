@@ -117,4 +117,62 @@ final class NotebookStoreTests: XCTestCase {
         XCTAssertEqual(page.displayTitle, "Meeting notes")
         XCTAssertEqual(ScratchpadPage(content: "   ", updatedAt: Date()).displayTitle, "Untitled")
     }
+
+    private func anchorStoreURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent("notebook.json")
+    }
+
+    func test_createFolderSeedsAndPersistsAnchors() throws {
+        let url = anchorStoreURL()
+        let store = NotebookStore(fileURL: url)
+        let id = try XCTUnwrap(store.createFolder(name: "Interviews", anchors: ["interview": 3.0]))
+
+        let reloaded = NotebookStore(fileURL: url)
+        XCTAssertEqual(reloaded.folders.first { $0.id == id }?.anchorTags, ["interview": 3.0])
+    }
+
+    func test_createFolderWithExistingNameMergesAnchorsKeepingTheStronger() throws {
+        let store = NotebookStore(fileURL: anchorStoreURL())
+        let first = try XCTUnwrap(store.createFolder(name: "Interviews", anchors: ["interview": 3.0, "work": 1.0]))
+        let second = try XCTUnwrap(store.createFolder(name: "interviews", anchors: ["interview": 1.0, "tasks": 2.0]))
+
+        XCTAssertEqual(first, second, "a case-insensitive name match must merge, not duplicate")
+        XCTAssertEqual(store.folders.count, 1)
+        XCTAssertEqual(store.folders[0].anchorTags, ["interview": 3.0, "work": 1.0, "tasks": 2.0])
+    }
+
+    func test_createFolderWithoutAnchorsLeavesExistingAnchorsUntouched() throws {
+        let store = NotebookStore(fileURL: anchorStoreURL())
+        let id = try XCTUnwrap(store.createFolder(name: "Interviews", anchors: ["interview": 3.0]))
+        XCTAssertEqual(store.createFolder(name: "Interviews"), id)
+        XCTAssertEqual(store.folders[0].anchorTags, ["interview": 3.0])
+    }
+
+    func test_reinforceAnchorsRaisesWeightsAndPersists() throws {
+        let url = anchorStoreURL()
+        let store = NotebookStore(fileURL: url)
+        let id = try XCTUnwrap(store.createFolder(name: "Interviews", anchors: ["interview": 3.0]))
+        store.reinforceAnchors(id, with: ["interview", "screener"])
+
+        let reloaded = NotebookStore(fileURL: url)
+        let anchors = try XCTUnwrap(reloaded.folders.first { $0.id == id }?.anchorTags)
+        XCTAssertEqual(anchors["interview"], 4.0)
+        XCTAssertEqual(anchors["screener"], 1.0)
+    }
+
+    func test_reinforceAnchorsIgnoresAnUnknownFolder() throws {
+        let store = NotebookStore(fileURL: anchorStoreURL())
+        let id = try XCTUnwrap(store.createFolder(name: "Interviews", anchors: ["interview": 3.0]))
+        store.reinforceAnchors(UUID(), with: ["anything"])
+        XCTAssertEqual(store.folders.first { $0.id == id }?.anchorTags, ["interview": 3.0])
+    }
+
+    func test_deletingAFolderRemovesItsAnchors() throws {
+        let store = NotebookStore(fileURL: anchorStoreURL())
+        let id = try XCTUnwrap(store.createFolder(name: "Interviews", anchors: ["interview": 3.0]))
+        store.deleteFolder(id)
+        XCTAssertTrue(store.folders.isEmpty)
+    }
 }

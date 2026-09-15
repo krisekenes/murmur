@@ -143,17 +143,31 @@ public final class NotebookStore {
         persist()
     }
 
+    /// Creates a folder, or returns the existing one with the same name so that
+    /// grouping under a name you already use merges instead of duplicating.
+    /// Merging reinforces the existing anchors rather than replacing them.
     @discardableResult
-    public func createFolder(name: String) -> UUID? {
+    public func createFolder(name: String, anchors: [String: Double] = [:]) -> UUID? {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return nil }
-        if let existing = folders.first(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) {
-            return existing.id
+        if let index = folders.firstIndex(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) {
+            if !anchors.isEmpty {
+                folders[index].anchorTags = TileGrouping.merged(folders[index].anchorTags, anchors)
+                persist()
+            }
+            return folders[index].id
         }
-        let folder = NoteFolder(id: UUID(), name: name)
+        let folder = NoteFolder(id: UUID(), name: name, anchorTags: anchors)
         folders.append(folder)
         persist()
         return folder.id
+    }
+
+    /// Strengthen a folder's anchors when a conversation is dropped into it.
+    public func reinforceAnchors(_ folderID: UUID, with tags: [String]) {
+        guard let index = folders.firstIndex(where: { $0.id == folderID }) else { return }
+        folders[index].anchorTags = TileGrouping.reinforced(folders[index].anchorTags, with: tags)
+        persist()
     }
 
     @discardableResult
