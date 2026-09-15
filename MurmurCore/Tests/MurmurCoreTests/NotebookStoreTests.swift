@@ -21,6 +21,60 @@ final class NotebookStoreTests: XCTestCase {
         XCTAssertEqual(NotebookStore(fileURL: url).currentContent, "new note")
     }
 
+    func test_oldNotebookLoadsWithoutMetadata() throws {
+        let url = tempURL()
+        let id = UUID()
+        let json = "{\"pages\":[{\"id\":\"\(id.uuidString)\",\"content\":\"Old note\",\"updatedAt\":0}],\"currentID\":\"\(id.uuidString)\"}"
+        try Data(json.utf8).write(to: url)
+        let store = NotebookStore(fileURL: url)
+        XCTAssertEqual(store.currentContent, "Old note")
+        XCTAssertEqual(store.currentID, id)
+        XCTAssertTrue(store.folders.isEmpty)
+        XCTAssertTrue(store.pages[0].tags.isEmpty)
+        store.addTag(" #My Tag ")
+        XCTAssertEqual(NotebookStore(fileURL: url).pages[0].tags, ["my-tag"])
+    }
+
+    func test_folderLifecyclePreservesNotesAndTags() throws {
+        let url = tempURL()
+        let store = NotebookStore(fileURL: url)
+        let folder = try XCTUnwrap(store.createFolder(name: " Work "))
+        XCTAssertEqual(store.createFolder(name: "work"), folder)
+        XCTAssertNil(store.createFolder(name: "  "))
+        store.updateCurrent(content: "Keep this note")
+        store.moveCurrent(to: folder)
+        store.addTag("Meeting")
+        store.addTag("#meeting")
+        store.addTag("   ")
+        let second = store.newPage(folderID: folder)
+        store.updateCurrent(content: "Second note")
+        XCTAssertTrue(store.renameFolder(folder, name: "Projects"))
+        let other = try XCTUnwrap(store.createFolder(name: "Other"))
+        XCTAssertFalse(store.renameFolder(other, name: "projects"))
+        let reloaded = NotebookStore(fileURL: url)
+        XCTAssertEqual(reloaded.currentID, second)
+        XCTAssertEqual(reloaded.pages.map(\.folderID), [folder, folder])
+        XCTAssertEqual(reloaded.pages[0].tags, ["meeting"])
+        reloaded.deleteFolder(folder)
+        let final = NotebookStore(fileURL: url)
+        XCTAssertEqual(final.pages.map(\.content), ["Keep this note", "Second note"])
+        XCTAssertTrue(final.pages.allSatisfy { $0.folderID == nil })
+        final.select(final.pages[0].id)
+        final.removeTag("meeting")
+        final.moveCurrent(to: UUID())
+        XCTAssertNil(final.pages[0].folderID)
+        XCTAssertTrue(NotebookStore(fileURL: url).pages[0].tags.isEmpty)
+    }
+
+    func test_smartTagsUseTopicsHashtagsAndExistingVocabulary() {
+        let tags = NoteTagger.suggestions(for: "Meeting agenda for the Apollo launch #Release", existing: ["meetings"], vocabulary: ["apollo-launch"])
+        XCTAssertEqual(tags, ["release", "apollo-launch"])
+        XCTAssertEqual(NoteTagger.suggestions(for: ""), [])
+        XCTAssertEqual(NoteTagger.suggestions(for: "hotel flight itinerary"), ["travel"])
+        XCTAssertEqual(NoteTagger.suggestions(for: "decode debugger"), [])
+        XCTAssertLessThanOrEqual(NoteTagger.suggestions(for: "meeting todo idea project flight study code journal").count, 5)
+    }
+
     func test_startsWithOnePage() {
         let store = NotebookStore(fileURL: tempURL())
         XCTAssertEqual(store.pages.count, 1)

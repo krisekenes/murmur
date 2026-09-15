@@ -47,6 +47,7 @@ struct MainWindowView: View {
     @ViewBuilder private var rightPane: some View {
         if let id = selectedID, let entry = state.historyEntries.first(where: { $0.id == id }) {
             DictationDetailView(
+                state: state,
                 entry: entry,
                 onClose: { selectedID = nil },
                 onCopy: { copy(entry.polished) },
@@ -76,7 +77,7 @@ struct MainWindowView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11))
                     .foregroundStyle(searchFocused ? Theme.accent.opacity(0.9) : Color.secondary.opacity(0.7))
-                TextField("Search dictations", text: $search)
+                TextField("Search conversations or tags", text: $search)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
                     .frame(maxWidth: 220)
@@ -89,6 +90,13 @@ struct MainWindowView: View {
                     .strokeBorder(searchFocused ? Theme.accent.opacity(0.55) : .white.opacity(0.08))
             )
             .animation(.easeOut(duration: 0.15), value: searchFocused)
+
+            Button { selectedID = nil } label: {
+                Label("Scratchpad", systemImage: "books.vertical")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Open editable scratchpad pages")
 
             StatusDot(phase: state.phase)
 

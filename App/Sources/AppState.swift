@@ -5,6 +5,9 @@ import MurmurCore
 public final class AppState: ObservableObject {
     public enum Phase: Equatable { case idle, listening(locked: Bool), transcribing, polishing, downloading(Double), error(String) }
 
+    @Published public var organizedConversationCount = 0
+    private var lastOrganization: [UUID: UUID] = [:]
+
     @Published public var notice: String?
     @Published public var canRetryModels = false
     public var retryModels: (() -> Void)?
@@ -25,6 +28,7 @@ public final class AppState: ObservableObject {
             pages = notebook.pages
         }
     }
+    @Published public var folders: [NoteFolder] = []
     @Published public var pages: [ScratchpadPage] = []
     @Published public var currentPageID: UUID = UUID()
 
@@ -46,6 +50,7 @@ public final class AppState: ObservableObject {
         recentPeek = Array(history.entries.prefix(3))
         historyEntries = history.entries
         pages = notebook.pages
+        folders = notebook.folders
         currentPageID = notebook.currentID
         isLoadingPage = true
         scratchpad = notebook.currentContent
@@ -61,12 +66,57 @@ public final class AppState: ObservableObject {
         }
     }
 
-    public func newPage() { notebook.newPage(); loadCurrentPage() }
+    public func newPage(folderID: UUID? = nil) { notebook.newPage(folderID: folderID); loadCurrentPage() }
     public func selectPage(_ id: UUID) { notebook.select(id); loadCurrentPage() }
     public func deleteCurrentPage() { notebook.delete(currentPageID); loadCurrentPage() }
 
+    public func createFolder(_ name: String) { notebook.createFolder(name: name); loadCurrentPage() }
+    public func renameFolder(_ id: UUID, name: String) -> Bool {
+        let renamed = notebook.renameFolder(id, name: name)
+        loadCurrentPage()
+        return renamed
+    }
+    public func deleteFolder(_ id: UUID) {
+        history.unfile(folderID: id)
+        refreshHistory()
+        notebook.deleteFolder(id)
+        loadCurrentPage()
+    }
+    public func addConversationTag(_ tag: String, id: UUID) { history.addTag(tag, to: id); refreshHistory() }
+    public func removeConversationTag(_ tag: String, id: UUID) { history.removeTag(tag, from: id); refreshHistory() }
+    public func moveConversation(_ id: UUID, to folderID: UUID?) {
+        guard folderID == nil || folders.contains(where: { $0.id == folderID }) else { return }
+        history.move(id, to: folderID)
+        refreshHistory()
+    }
+    public func organizeConversations(_ suggestions: [FolderSuggestion]) {
+        let moves = SmartFolderOrganizer.apply(suggestions, history: history, notebook: notebook)
+        if !moves.isEmpty {
+            lastOrganization = moves
+            organizedConversationCount = moves.count
+        }
+        folders = notebook.folders
+        refreshHistory()
+    }
+
+    public func undoConversationOrganization() {
+        history.undoOrganization(lastOrganization)
+        lastOrganization = [:]
+        organizedConversationCount = 0
+        refreshHistory()
+    }
+
+    private func refreshHistory() {
+        historyEntries = history.entries
+        recentPeek = Array(history.entries.prefix(3))
+    }
+    public func movePage(to id: UUID?) { notebook.moveCurrent(to: id); loadCurrentPage() }
+    public func addTag(_ tag: String) { notebook.addTag(tag); pages = notebook.pages }
+    public func removeTag(_ tag: String) { notebook.removeTag(tag); pages = notebook.pages }
+
     private func loadCurrentPage() {
         pages = notebook.pages
+        folders = notebook.folders
         currentPageID = notebook.currentID
         isLoadingPage = true
         scratchpad = notebook.currentContent

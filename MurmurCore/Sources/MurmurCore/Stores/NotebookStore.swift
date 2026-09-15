@@ -5,11 +5,26 @@ public struct ScratchpadPage: Codable, Identifiable, Equatable, Sendable {
     public let id: UUID
     public var content: String
     public var updatedAt: Date
+    public var folderID: UUID?
+    public var tags: [String]
 
-    public init(id: UUID = UUID(), content: String = "", updatedAt: Date) {
+    public init(id: UUID = UUID(), content: String = "", updatedAt: Date, folderID: UUID? = nil, tags: [String] = []) {
         self.id = id
         self.content = content
         self.updatedAt = updatedAt
+        self.folderID = folderID
+        self.tags = tags
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, content, updatedAt, folderID, tags }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        content = try values.decode(String.self, forKey: .content)
+        updatedAt = try values.decode(Date.self, forKey: .updatedAt)
+        folderID = try values.decodeIfPresent(UUID.self, forKey: .folderID)
+        tags = try values.decodeIfPresent([String].self, forKey: .tags) ?? []
     }
 
     /// Title from the first non-empty line (the note's "name"), else "Untitled".
@@ -22,13 +37,19 @@ public struct ScratchpadPage: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
+public struct NoteFolder: Codable, Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public var name: String
+}
+
 /// A notebook of scratchpad pages with a current selection, persisted as JSON.
 /// Migrates a legacy single scratchpad.txt into the first page on first run.
 public final class NotebookStore {
-    private struct Notebook: Codable { var pages: [ScratchpadPage]; var currentID: UUID }
+    private struct Notebook: Codable { var pages: [ScratchpadPage]; var currentID: UUID; var folders: [NoteFolder]? }
 
     public private(set) var pages: [ScratchpadPage]
     public private(set) var currentID: UUID
+    public private(set) var folders: [NoteFolder] = []
     private let fileURL: URL
     private var persistenceBlocked = false
 
@@ -37,6 +58,7 @@ public final class NotebookStore {
         if let data = try? Data(contentsOf: fileURL),
            let nb = try? JSONDecoder().decode(Notebook.self, from: data),
            !nb.pages.isEmpty {
+            folders = nb.folders ?? []
             pages = nb.pages
             currentID = nb.pages.contains(where: { $0.id == nb.currentID }) ? nb.currentID : nb.pages[0].id
         } else {
@@ -72,8 +94,9 @@ public final class NotebookStore {
     }
 
     @discardableResult
-    public func newPage(now: Date = Date()) -> UUID {
-        let page = ScratchpadPage(content: "", updatedAt: now)
+    public func newPage(now: Date = Date(), folderID: UUID? = nil) -> UUID {
+        var page = ScratchpadPage(content: "", updatedAt: now)
+        page.folderID = folders.contains { $0.id == folderID } ? folderID : nil
         pages.append(page)
         currentID = page.id
         persist()
@@ -99,8 +122,59 @@ public final class NotebookStore {
         persist()
     }
 
+    @discardableResult
+    public func createFolder(name: String) -> UUID? {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return nil }
+        if let existing = folders.first(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) {
+            return existing.id
+        }
+        let folder = NoteFolder(id: UUID(), name: name)
+        folders.append(folder)
+        persist()
+        return folder.id
+    }
+
+    @discardableResult
+    public func renameFolder(_ id: UUID, name: String) -> Bool {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let index = folders.firstIndex(where: { $0.id == id }),
+              !folders.contains(where: { $0.id != id && $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) else { return false }
+        folders[index].name = name
+        persist()
+        return true
+    }
+
+    /// Removing a folder keeps its notes in Unfiled.
+    public func deleteFolder(_ id: UUID) {
+        folders.removeAll { $0.id == id }
+        for index in pages.indices where pages[index].folderID == id { pages[index].folderID = nil }
+        persist()
+    }
+
+    public func moveCurrent(to folderID: UUID?) {
+        guard folderID == nil || folders.contains(where: { $0.id == folderID }),
+              let index = pages.firstIndex(where: { $0.id == currentID }) else { return }
+        pages[index].folderID = folderID
+        persist()
+    }
+
+    public func addTag(_ tag: String) {
+        let tag = NoteTagger.normalize(tag)
+        guard !tag.isEmpty, let index = pages.firstIndex(where: { $0.id == currentID }),
+              !pages[index].tags.contains(tag) else { return }
+        pages[index].tags.append(tag)
+        persist()
+    }
+
+    public func removeTag(_ tag: String) {
+        guard let index = pages.firstIndex(where: { $0.id == currentID }) else { return }
+        pages[index].tags.removeAll { $0 == tag }
+        persist()
+    }
+
     private func persist() {
-        guard !persistenceBlocked, let data = try? JSONEncoder().encode(Notebook(pages: pages, currentID: currentID)) else { return }
+        guard !persistenceBlocked, let data = try? JSONEncoder().encode(Notebook(pages: pages, currentID: currentID, folders: folders)) else { return }
         try? FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: fileURL, options: .atomic)

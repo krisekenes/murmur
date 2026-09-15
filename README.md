@@ -20,6 +20,10 @@ Unnotarized preview builds may trigger a macOS warning. For a build you trust, f
 - **Escape** cancels recording.
 - Choose **Right Option** instead in Settings. For Fn, set System Settings → Keyboard → “Press Globe key to” → “Do Nothing”.
 - Toggle **Polish with AI** to clean up wording. Short utterances and unavailable/timed-out polish use the raw transcript. Vocabulary entries guide polishing, not speech recognition.
+- Click **Smart organize** above the conversation feed to preview folder suggestions for all unfiled conversations. It matches existing folder names and tags from previously filed conversations, then suggests topic folders. Edit destinations or deselect items before applying; **Undo moves** reverses the latest batch during the current session, leaving created folders available.
+- Conversations receive local topic tags automatically, including existing history. Search conversation text or tags in the top bar, filter by folder or tag above the feed, and select a conversation to move it or edit its tags. Short or unrecognized text may have no automatic tags.
+- In the scratchpad, use Browse to search notes and filter by folder or tag. Use the folder menu to move a note or manage folders; deleting a folder keeps its notes in Unfiled.
+- Add custom tags or click a suggested tag to accept it. Suggestions use local keyword matching, hashtags, and your existing tags; they update as you type or dictate and require no model download. Click an assigned tag’s × to remove it.
 - Open Murmur from its menu-bar icon to browse dictations and notes. Click a recent dictation in the menu to copy it.
 
 Wait until processing finishes before starting another dictation. If you switch apps during processing, Murmur puts the result on the clipboard instead of pasting into the new app. Results are also kept in history. AI cleanup can change meaning; review important text.
