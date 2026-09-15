@@ -95,4 +95,15 @@ final class TileGroupingTests: XCTestCase {
                                          ["interview": 1.0, "tasks": 2.0])
         XCTAssertEqual(merged, ["interview": 3.0, "work": 1.0, "tasks": 2.0])
     }
+
+    // MARK: SmartFolderOrganizer naming/reason agreement
+
+    func test_suggestionNameAndReasonAgreeForANonNormalizedTag() {
+        let entry = HistoryEntry(id: UUID(), raw: "r", polished: "p",
+                                 createdAt: Date(), appName: "Murmur", tags: ["Interview"])
+        let suggestions = SmartFolderOrganizer.suggestions(entries: [entry], folders: [])
+        XCTAssertEqual(suggestions.count, 1)
+        XCTAssertEqual(suggestions[0].folderName, "Interviews")
+        XCTAssertEqual(suggestions[0].reason, "Tagged #interview")
+    }
 }

@@ -41,8 +41,12 @@ public enum SmartFolderOrganizer {
                 return FolderSuggestion(id: entry.id, folderName: best.0.name, reason: best.2)
             }
             // Prefer a specific topic over a broad Work tag.
-            let topic = entry.tags.first { $0 != "work" } ?? entry.tags.first
-            guard let topic, !NoteTagger.normalize(topic).isEmpty else { return nil }
+            let raw = entry.tags.first { $0 != "work" } ?? entry.tags.first
+            // Normalize once here so the folder name and the reason string can
+            // never disagree, and so the lookup does not depend on callers
+            // having pre-normalized entry.tags.
+            let topic = raw.map(NoteTagger.normalize) ?? ""
+            guard !topic.isEmpty else { return nil }
             let name = FolderNaming.displayName(for: topic)
             return FolderSuggestion(id: entry.id, folderName: name, reason: "Tagged #\(topic)")
         }
