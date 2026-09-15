@@ -79,4 +79,53 @@ final class SmartFolderOrganizerTests: XCTestCase {
         XCTAssertEqual(moves[conversation.id], career)
         XCTAssertEqual(notebook.folders.count, 1)
     }
+
+    func test_anchorWeightOutranksAFolderNameMatch() throws {
+        let (_, notebook, _) = try stores()
+        // "Screeners" does not appear in the text, so only its anchor can match it.
+        _ = notebook.createFolder(name: "Screeners", anchors: ["interview": TileGrouping.sharedWeight])
+        _ = notebook.createFolder(name: "Recruiting")
+        let unfiled = entry("notes about recruiting", tags: ["interview"])
+
+        let suggestions = SmartFolderOrganizer.suggestions(entries: [unfiled], folders: notebook.folders)
+
+        XCTAssertEqual(suggestions.count, 1)
+        XCTAssertEqual(suggestions[0].folderName, "Screeners")
+        XCTAssertTrue(suggestions[0].reason.contains("interview"), "reason should name the anchor")
+    }
+
+    func test_foldersWithoutAnchorsBehaveExactlyAsBefore() throws {
+        let (_, notebook, _) = try stores()
+        _ = notebook.createFolder(name: "Recruiting")
+        let unfiled = entry("notes about recruiting", tags: ["interview"])
+
+        let suggestions = SmartFolderOrganizer.suggestions(entries: [unfiled], folders: notebook.folders)
+
+        XCTAssertEqual(suggestions.count, 1)
+        XCTAssertEqual(suggestions[0].folderName, "Recruiting")
+        XCTAssertEqual(suggestions[0].reason, "Matches folder name")
+    }
+
+    func test_equallyAnchoredFoldersStayUnfiled() throws {
+        let (_, notebook, _) = try stores()
+        _ = notebook.createFolder(name: "Screeners", anchors: ["interview": TileGrouping.sharedWeight])
+        _ = notebook.createFolder(name: "Panels", anchors: ["interview": TileGrouping.sharedWeight])
+        let unfiled = entry("some notes", tags: ["interview"])
+
+        let suggestions = SmartFolderOrganizer.suggestions(entries: [unfiled], folders: notebook.folders)
+
+        XCTAssertTrue(suggestions.isEmpty, "an ambiguous anchor match must stay unfiled")
+    }
+
+    func test_incidentalCoOccurrenceDoesNotOutrankANameMatch() throws {
+        let (_, notebook, _) = try stores()
+        _ = notebook.createFolder(name: "Screeners", anchors: ["interview": TileGrouping.coOccurringWeight])
+        _ = notebook.createFolder(name: "Recruiting")
+        let unfiled = entry("notes about recruiting", tags: ["interview"])
+
+        let suggestions = SmartFolderOrganizer.suggestions(entries: [unfiled], folders: notebook.folders)
+
+        XCTAssertEqual(suggestions.count, 1)
+        XCTAssertEqual(suggestions[0].folderName, "Recruiting")
+    }
 }

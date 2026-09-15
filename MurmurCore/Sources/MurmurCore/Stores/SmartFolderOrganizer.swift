@@ -31,9 +31,21 @@ public enum SmartFolderOrganizer {
                 let nameMatch = !nameWords.isEmpty && nameWords.isSubset(of: contentWords)
                 let filed = entries.filter { $0.folderID == folder.id }
                 let matchingTags = Set(filed.flatMap(\.tags)).intersection(tags)
-                let score = (nameMatch ? 10 : 0) + min(matchingTags.count, 5)
+                // A folder built by hand carries anchor weights; one the tagger merely
+                // name-matched does not. Folders with no anchors score exactly as before.
+                let anchorSum = tags.reduce(0.0) { $0 + (folder.anchorTags[$1] ?? 0) }
+                let anchorScore = Int((anchorSum * TileGrouping.anchorScoreMultiplier).rounded())
+                let score = anchorScore + (nameMatch ? 10 : 0) + min(matchingTags.count, 5)
                 guard score > 0 else { return nil }
-                let reason = nameMatch ? "Matches folder name" : "Shares tags with conversations in this folder"
+                let reason: String
+                if anchorScore > 0,
+                   let anchor = tags.max(by: { (folder.anchorTags[$0] ?? 0) < (folder.anchorTags[$1] ?? 0) }) {
+                    reason = "Grouped by hand around #\(anchor)"
+                } else if nameMatch {
+                    reason = "Matches folder name"
+                } else {
+                    reason = "Shares tags with conversations in this folder"
+                }
                 return (folder, score, reason)
             }.sorted { $0.1 == $1.1 ? $0.0.name < $1.0.name : $0.1 > $1.1 }
             if let best = ranked.first {
