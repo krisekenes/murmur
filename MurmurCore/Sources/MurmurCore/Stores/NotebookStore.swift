@@ -40,6 +40,27 @@ public struct ScratchpadPage: Codable, Identifiable, Equatable, Sendable {
 public struct NoteFolder: Codable, Identifiable, Equatable, Sendable {
     public let id: UUID
     public var name: String
+    /// Tags this folder is "about", weighted by how deliberately they were set.
+    /// Seeded when conversations are grouped by hand, reinforced on later drops.
+    public var anchorTags: [String: Double]
+
+    private enum CodingKeys: String, CodingKey { case id, name, anchorTags }
+
+    public init(id: UUID, name: String, anchorTags: [String: Double] = [:]) {
+        self.id = id
+        self.name = name
+        self.anchorTags = anchorTags
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        // Synthesized decoding would make anchorTags required, failing every notebook
+        // written before this feature — and NotebookStore replaces an unreadable
+        // notebook with a blank page. decodeIfPresent is the data-loss guard.
+        anchorTags = try values.decodeIfPresent([String: Double].self, forKey: .anchorTags) ?? [:]
+    }
 }
 
 /// A notebook of scratchpad pages with a current selection, persisted as JSON.
