@@ -144,10 +144,19 @@ final class NotebookStoreTests: XCTestCase {
     }
 
     func test_createFolderWithoutAnchorsLeavesExistingAnchorsUntouched() throws {
-        let store = NotebookStore(fileURL: anchorStoreURL())
+        let url = anchorStoreURL()
+        let store = NotebookStore(fileURL: url)
         let id = try XCTUnwrap(store.createFolder(name: "Interviews", anchors: ["interview": 3.0]))
+
+        // A no-op merge must not rewrite the file. In-memory state looks identical
+        // either way, so the modification date is the only signal that catches it.
+        let before = try FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date
+
         XCTAssertEqual(store.createFolder(name: "Interviews"), id)
+
+        let after = try FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date
         XCTAssertEqual(store.folders[0].anchorTags, ["interview": 3.0])
+        XCTAssertEqual(before, after, "no anchors supplied — createFolder must not rewrite the notebook")
     }
 
     func test_reinforceAnchorsRaisesWeightsAndPersists() throws {
