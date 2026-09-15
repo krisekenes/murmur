@@ -23,9 +23,6 @@ public enum SmartFolderOrganizer {
     }
 
     public static func suggestions(entries: [HistoryEntry], folders: [NoteFolder]) -> [FolderSuggestion] {
-        let topicNames = ["interview": "Interviews", "meetings": "Meetings", "tasks": "Tasks",
-                          "ideas": "Ideas", "work": "Work", "travel": "Travel", "learning": "Learning",
-                          "engineering": "Engineering", "personal": "Personal"]
         return entries.filter { $0.folderID == nil }.compactMap { entry in
             let tags = Set(entry.tags.map(NoteTagger.normalize))
             let contentWords = words(entry.polished + " " + entry.tags.joined(separator: " "))
@@ -46,7 +43,7 @@ public enum SmartFolderOrganizer {
             // Prefer a specific topic over a broad Work tag.
             let topic = entry.tags.first { $0 != "work" } ?? entry.tags.first
             guard let topic, !NoteTagger.normalize(topic).isEmpty else { return nil }
-            let name = topicNames[topic] ?? topic.replacingOccurrences(of: "-", with: " ").capitalized
+            let name = FolderNaming.displayName(for: topic)
             return FolderSuggestion(id: entry.id, folderName: name, reason: "Tagged #\(topic)")
         }
     }
