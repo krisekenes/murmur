@@ -142,7 +142,15 @@ struct SpringboardView: View {
                 // flattened search grid hides folder tiles — so surface the root grid.
                 search = ""
                 openFolderID = nil
-                renamingFolderID = result.folderID
+                // Let the model name it first. Focusing the field now would race the
+                // rename and overwrite whatever was typed, so the field only takes
+                // focus if the model declines to answer.
+                let folderID = result.folderID
+                let (dragged, dropped) = (ref.id, entry.id)
+                Task {
+                    let named = await state.nameGroupedFolder(folderID, dragged, dropped)
+                    if !named { renamingFolderID = folderID }
+                }
             } else if !isSearching {
                 // Both tiles moved into the folder, so the open folder no longer shows them.
                 // While searching, openFolderID is only a memo for when search clears.

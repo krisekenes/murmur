@@ -106,4 +106,24 @@ final class TileGroupingTests: XCTestCase {
         XCTAssertEqual(suggestions[0].folderName, "Interviews")
         XCTAssertEqual(suggestions[0].reason, "Tagged #interview")
     }
+
+    // MARK: uniquePlaceholder
+
+    func test_firstPlaceholderUsesThePlainName() {
+        XCTAssertEqual(TileGrouping.uniquePlaceholder(existing: []), TileGrouping.defaultFolderName)
+        XCTAssertEqual(TileGrouping.uniquePlaceholder(existing: ["Work", "Roadmap"]),
+                       TileGrouping.defaultFolderName)
+    }
+
+    func test_placeholdersDoNotCollideSoUnrelatedDropsStaySeparate() {
+        // createFolder merges by name, so a second unnamed drop would otherwise
+        // land in the first drop's folder.
+        XCTAssertEqual(TileGrouping.uniquePlaceholder(existing: ["New Folder"]), "New Folder 2")
+        XCTAssertEqual(TileGrouping.uniquePlaceholder(existing: ["New Folder", "New Folder 2"]),
+                       "New Folder 3")
+    }
+
+    func test_placeholderCollisionIsCaseInsensitiveLikeCreateFolder() {
+        XCTAssertEqual(TileGrouping.uniquePlaceholder(existing: ["new folder"]), "New Folder 2")
+    }
 }

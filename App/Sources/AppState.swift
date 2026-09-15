@@ -130,7 +130,17 @@ public final class AppState: ObservableObject {
               let a = historyEntries.first(where: { $0.id == first }),
               let b = historyEntries.first(where: { $0.id == second }) else { return nil }
         let proposal = TileGrouping.propose(a.tags, b.tags)
-        let folderName = (name ?? proposal.suggestedName).trimmingCharacters(in: .whitespacesAndNewlines)
+        // An explicit or confident name is allowed to merge into an existing
+        // folder — that is what dropping onto the same topic twice should do. A
+        // placeholder must not, or two unrelated drops end up sharing a folder.
+        let folderName: String
+        if let name {
+            folderName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else if proposal.isConfident {
+            folderName = proposal.suggestedName
+        } else {
+            folderName = TileGrouping.uniquePlaceholder(existing: notebook.folders.map(\.name))
+        }
         // Record whether the folder already existed, so undo only removes what we made.
         let existed = notebook.folders.contains {
             $0.name.localizedCaseInsensitiveCompare(folderName) == .orderedSame
@@ -144,6 +154,56 @@ public final class AppState: ObservableObject {
         refreshHistory()
         return GroupingResult(folderID: folderID,
                               shouldPromptForName: name == nil && !proposal.isConfident)
+    }
+
+    /// Injected by DictationController so AppState can reach the local model
+    /// without owning it — the same idiom as `retryModels`. Nil until the model
+    /// is wired, which keeps AppState constructible in tests and previews.
+    public var nameFolderWithModel: ((String, String) async -> String?)?
+
+    /// Ask the local model to name a folder a drop just created, then apply it.
+    /// Returns false when the model is unloaded, busy, times out, or answers
+    /// unusably, which is the caller's cue to focus the rename field instead —
+    /// the folder keeps its editable placeholder either way.
+    @discardableResult
+    public func nameGroupedFolder(_ folderID: UUID, _ first: UUID, _ second: UUID) async -> Bool {
+        guard let nameFolderWithModel,
+              let a = historyEntries.first(where: { $0.id == first }),
+              let b = historyEntries.first(where: { $0.id == second }),
+              let suggested = await nameFolderWithModel(a.polished, b.polished) else { return false }
+        applyGeneratedFolderName(suggested, to: folderID)
+        return true
+    }
+
+    /// Apply a generated name, merging when it is already taken. `renameFolder`
+    /// refuses a duplicate, and leaving the placeholder would waste the answer —
+    /// so the conversations move into the folder that owns the name, exactly as
+    /// `createFolder` would have merged them had the name been known at drop time.
+    private func applyGeneratedFolderName(_ name: String, to folderID: UUID) {
+        guard notebook.folders.contains(where: { $0.id == folderID }) else { return }
+        if notebook.renameFolder(folderID, name: name) {
+            folders = notebook.folders
+            lastGroupingSummary = "Grouped 2 into \(name)"
+            return
+        }
+        guard let target = notebook.folders.first(where: {
+            $0.id != folderID && $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame
+        }) else { return }
+        for entry in history.entries where entry.folderID == folderID {
+            notebook.reinforceAnchors(target.id, with: entry.tags)
+            history.move(entry.id, to: target.id)
+        }
+        notebook.deleteFolder(folderID)
+        // Undo now has to reverse a merge: the surviving folder predates this
+        // grouping, so undo must never delete it.
+        if var grouping = lastGrouping, grouping.folderID == folderID {
+            grouping.folderID = target.id
+            grouping.folderWasCreated = false
+            lastGrouping = grouping
+        }
+        folders = notebook.folders
+        lastGroupingSummary = "Grouped 2 into \(name)"
+        refreshHistory()
     }
 
     /// Drop a conversation onto an existing folder: file it and strengthen the anchors.

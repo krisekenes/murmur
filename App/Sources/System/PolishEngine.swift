@@ -13,10 +13,12 @@ public actor PolishEngine {
     private var generating = false
     private var container: ModelContainer?
     private let builder: PolishPromptBuilder
+    private let namer: FolderNamePromptBuilder
     private let timeout: TimeInterval
 
     public init(minWords: Int, timeout: TimeInterval = 3.0) {
         self.builder = PolishPromptBuilder(minWords: minWords)
+        self.namer = FolderNamePromptBuilder()
         self.timeout = timeout
     }
 
@@ -64,5 +66,28 @@ public actor PolishEngine {
             return result.isEmpty ? raw : result
         }
         return await timedResult(of: work, timeout: .seconds(timeout), fallback: raw)
+    }
+
+    /// Names a folder from the two conversations dropped together, or returns nil
+    /// when the model is unloaded, already generating, times out, or answers with
+    /// something `sanitize` rejects. Best effort by design: dictation polishing
+    /// shares this actor's single generation slot and must not be made to wait on
+    /// a folder name. Never throws.
+    public func nameFolder(_ first: String, _ second: String) async -> String? {
+        guard !generating, let container, case .ready = loadState else { return nil }
+        let session = ChatSession(
+            container,
+            instructions: namer.systemPrompt(),
+            generateParameters: GenerateParameters(maxTokens: 24, temperature: 0.2),
+            additionalContext: ["enable_thinking": false]
+        )
+        let prompt = namer.userPrompt(first, second)
+        generating = true
+        let work = Task { () -> String? in
+            defer { generating = false }
+            guard let raw = try? await session.respond(to: prompt) else { return nil }
+            return namer.sanitize(raw)
+        }
+        return await timedResult(of: work, timeout: .seconds(timeout), fallback: nil)
     }
 }

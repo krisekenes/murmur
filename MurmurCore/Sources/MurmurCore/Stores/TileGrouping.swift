@@ -22,6 +22,21 @@ public enum TileGrouping {
 
     public static let defaultFolderName = "New Folder"
 
+    /// A placeholder name no existing folder already uses.
+    ///
+    /// `NotebookStore.createFolder` merges by name. For a name drawn from a shared
+    /// tag that is the point — dropping into "Roadmap" twice should reach one
+    /// folder. For the placeholder it is never right: two unrelated drops would
+    /// land in a single "New Folder". Suffixing keeps them apart until the real
+    /// name arrives.
+    public static func uniquePlaceholder(existing: [String]) -> String {
+        let taken = Set(existing.map { $0.lowercased() })
+        guard taken.contains(defaultFolderName.lowercased()) else { return defaultFolderName }
+        var suffix = 2
+        while taken.contains("\(defaultFolderName) \(suffix)".lowercased()) { suffix += 1 }
+        return "\(defaultFolderName) \(suffix)"
+    }
+
     public struct Proposal: Equatable, Sendable {
         /// Folder name to create or merge into.
         public let suggestedName: String

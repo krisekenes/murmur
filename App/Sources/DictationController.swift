@@ -37,6 +37,10 @@ public final class DictationController: HotkeyMonitorDelegate {
             guard let self else { return }
             Task { await self.loadModels() }
         }
+        state.nameFolderWithModel = { [weak self] first, second in
+            guard let self else { return nil }
+            return await self.polisher.nameFolder(first, second)
+        }
         Task { await loadModels() }
     }
 
