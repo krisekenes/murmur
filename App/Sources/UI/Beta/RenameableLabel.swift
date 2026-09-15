@@ -42,6 +42,8 @@ struct RenameableLabel: View {
                     .contentShape(Rectangle())
                     .onTapGesture { beginEditing() }
                     .help("Click to rename")
+                    .accessibilityHint("Double-tap to rename")
+                    .accessibilityAddTraits(.isButton)
             }
         }
         .frame(width: 118)
@@ -59,6 +61,10 @@ struct RenameableLabel: View {
         let value = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         editing = false
         onEditingEnded()
+        // Clear before any re-entry: dismissing the field flips fieldFocused, which
+        // fires commit() a second time. An empty draft makes that pass a no-op, the
+        // same way cancel() defends itself.
+        draft = ""
         guard !value.isEmpty, value != editSeed else { return }   // empty or unchanged reverts
         onCommit(value)
     }
