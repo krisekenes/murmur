@@ -42,6 +42,7 @@ Confirmed green before starting: `swift test --package-path MurmurCore` reports 
 | File | Responsibility |
 |---|---|
 | `App/Sources/UI/Beta/ConversationRef.swift` | Drag payload + exported UTType |
+| `App/Sources/UI/Beta/RenameableLabel.swift` | Inline rename field shared by both tiles |
 | `App/Sources/UI/Beta/ConversationTile.swift` | One conversation: text preview + renameable label |
 | `App/Sources/UI/Beta/FolderTile.swift` | One folder: 2x2 miniatures + honest counts |
 | `App/Sources/UI/Beta/FolderNotesSection.swift` | "Also in this folder" notes list inside an open folder |
@@ -1089,9 +1090,10 @@ git commit -m "feat(beta): add conversation drag payload with exported UTType"
 
 ### Task 8: Tile views
 
-The visual vocabulary of the springboard. Both tiles share the same footprint so the grid stays on a rhythm, and both put a renameable label under a preview — the Finder shape.
+The visual vocabulary of the springboard. Both tiles share the same footprint so the grid stays on a rhythm, and both put a renameable label under a preview — the Finder shape. The rename behavior lives in one view so the two tiles cannot drift apart on what Return, Escape, blur, and empty input mean.
 
 **Files:**
+- Create: `App/Sources/UI/Beta/RenameableLabel.swift`
 - Create: `App/Sources/UI/Beta/ConversationTile.swift`
 - Create: `App/Sources/UI/Beta/FolderTile.swift`
 - Modify: `App/Sources/UI/Theme.swift`
@@ -1100,6 +1102,7 @@ The visual vocabulary of the springboard. Both tiles share the same footprint so
 - Consumes: `HistoryEntry`, `NoteFolder`, `Theme.accent`
 - Produces:
   - `Theme.canvas: Color`
+  - `RenameableLabel(text:editSeed:font:color:beginsEditing:onCommit:onEditingEnded:)`
   - `ConversationTile(entry:isDropTarget:onOpen:onRename:)`
   - `FolderTile(folder:previews:conversationCount:noteCount:isDropTarget:beginsRenaming:onOpen:onRename:onRenameEnded:)`
 
@@ -1117,7 +1120,88 @@ public enum Theme {
 }
 ```
 
-- [ ] **Step 2: Create `ConversationTile`**
+- [ ] **Step 2: Create `RenameableLabel`**
+
+Note `text` and `editSeed` are deliberately separate: a conversation tile *displays* `#tasks` or a time stamp but must *edit* the bare tag `tasks`. The unchanged-value guard compares against `editSeed`, not the display text.
+
+Create `App/Sources/UI/Beta/RenameableLabel.swift`:
+
+```swift
+import SwiftUI
+
+/// The editable name under a springboard tile. Owns every rule about what renaming
+/// means — commit on Return or blur, revert on Escape or empty — so conversation
+/// tiles and folder tiles cannot drift apart on the behavior.
+struct RenameableLabel: View {
+    /// What the label shows when idle, e.g. "#tasks" or "9:42 PM".
+    let text: String
+    /// What the field starts with when editing begins, e.g. the bare tag "tasks".
+    let editSeed: String
+    let font: Font
+    let color: Color
+    /// Set when a tile was just created with a fallback name and wants focus.
+    let beginsEditing: Bool
+    let onCommit: (String) -> Void
+    let onEditingEnded: () -> Void
+
+    @State private var editing = false
+    @State private var draft = ""
+    @FocusState private var fieldFocused: Bool
+
+    var body: some View {
+        Group {
+            if editing {
+                TextField("", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(font)
+                    .multilineTextAlignment(.center)
+                    .focused($fieldFocused)
+                    .onSubmit { commit() }
+                    .onExitCommand { cancel() }
+                    .onChange(of: fieldFocused) { _, focused in if !focused { commit() } }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(RoundedRectangle(cornerRadius: 5).fill(.white.opacity(0.12)))
+            } else {
+                Text(text)
+                    .font(font)
+                    .foregroundStyle(color)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .contentShape(Rectangle())
+                    .onTapGesture { beginEditing() }
+                    .help("Click to rename")
+            }
+        }
+        .frame(width: 118)
+        .onAppear { if beginsEditing { beginEditing() } }
+        .onChange(of: beginsEditing) { _, begins in if begins { beginEditing() } }
+    }
+
+    private func beginEditing() {
+        draft = editSeed
+        editing = true
+        fieldFocused = true
+    }
+
+    private func commit() {
+        let value = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        editing = false
+        onEditingEnded()
+        guard !value.isEmpty, value != editSeed else { return }   // empty or unchanged reverts
+        onCommit(value)
+    }
+
+    /// Clearing the draft first makes the commit triggered by losing focus a no-op.
+    private func cancel() {
+        draft = ""
+        editing = false
+        onEditingEnded()
+    }
+}
+```
+
+- [ ] **Step 3: Create `ConversationTile`**
 
 Create `App/Sources/UI/Beta/ConversationTile.swift`:
 
@@ -1134,9 +1218,6 @@ struct ConversationTile: View {
     let onRename: (String) -> Void
 
     @State private var hover = false
-    @State private var editing = false
-    @State private var draft = ""
-    @FocusState private var fieldFocused: Bool
 
     private var previewText: String {
         let text = entry.polished.isEmpty ? entry.raw : entry.polished
@@ -1152,7 +1233,15 @@ struct ConversationTile: View {
     var body: some View {
         VStack(spacing: 6) {
             preview
-            labelView
+            RenameableLabel(
+                text: label,
+                editSeed: entry.tags.first ?? "",
+                font: .system(size: 10),
+                color: entry.tags.isEmpty ? Color.secondary : Theme.accent.opacity(0.9),
+                beginsEditing: false,
+                onCommit: onRename,
+                onEditingEnded: {}
+            )
         }
         .frame(width: 132)
     }
@@ -1185,56 +1274,10 @@ struct ConversationTile: View {
             .animation(.easeOut(duration: 0.12), value: isDropTarget)
             .accessibilityLabel(Text("Conversation: " + String(previewText.prefix(80))))
     }
-
-    @ViewBuilder private var labelView: some View {
-        if editing {
-            TextField("", text: $draft)
-                .textFieldStyle(.plain)
-                .font(.system(size: 10))
-                .multilineTextAlignment(.center)
-                .focused($fieldFocused)
-                .onSubmit { commit() }
-                .onExitCommand { cancel() }
-                .onChange(of: fieldFocused) { _, focused in if !focused { commit() } }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(RoundedRectangle(cornerRadius: 5).fill(.white.opacity(0.12)))
-                .frame(width: 118)
-        } else {
-            Text(label)
-                .font(.system(size: 10))
-                .foregroundStyle(entry.tags.isEmpty ? Color.secondary : Theme.accent.opacity(0.9))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(width: 118)
-                .contentShape(Rectangle())
-                .onTapGesture { beginEditing() }
-                .help("Click to rename")
-        }
-    }
-
-    private func beginEditing() {
-        draft = entry.tags.first ?? ""
-        editing = true
-        fieldFocused = true
-    }
-
-    private func commit() {
-        let value = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        editing = false
-        guard !value.isEmpty else { return }   // empty reverts
-        onRename(value)
-    }
-
-    /// Clearing the draft first means the commit triggered by losing focus is a no-op.
-    private func cancel() {
-        draft = ""
-        editing = false
-    }
 }
 ```
 
-- [ ] **Step 3: Create `FolderTile`**
+- [ ] **Step 4: Create `FolderTile`**
 
 Create `App/Sources/UI/Beta/FolderTile.swift`:
 
@@ -1259,9 +1302,6 @@ struct FolderTile: View {
     let onRenameEnded: () -> Void
 
     @State private var hover = false
-    @State private var editing = false
-    @State private var draft = ""
-    @FocusState private var fieldFocused: Bool
 
     private var countLabel: String {
         noteCount == 0
@@ -1272,15 +1312,21 @@ struct FolderTile: View {
     var body: some View {
         VStack(spacing: 6) {
             previewGrid
-            labelView
+            RenameableLabel(
+                text: folder.name,
+                editSeed: folder.name,
+                font: .system(size: 10, weight: .medium),
+                color: .primary,
+                beginsEditing: beginsRenaming,
+                onCommit: onRename,
+                onEditingEnded: onRenameEnded
+            )
             Text(countLabel)
                 .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
         .frame(width: 132)
-        .onAppear { if beginsRenaming { beginEditing() } }
-        .onChange(of: beginsRenaming) { _, begins in if begins { beginEditing() } }
     }
 
     private var previewGrid: some View {
@@ -1325,66 +1371,20 @@ struct FolderTile: View {
         }
         .clipped()
     }
-
-    @ViewBuilder private var labelView: some View {
-        if editing {
-            TextField("", text: $draft)
-                .textFieldStyle(.plain)
-                .font(.system(size: 10, weight: .medium))
-                .multilineTextAlignment(.center)
-                .focused($fieldFocused)
-                .onSubmit { commit() }
-                .onExitCommand { cancel() }
-                .onChange(of: fieldFocused) { _, focused in if !focused { commit() } }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(RoundedRectangle(cornerRadius: 5).fill(.white.opacity(0.12)))
-                .frame(width: 118)
-        } else {
-            Text(folder.name)
-                .font(.system(size: 10, weight: .medium))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(width: 118)
-                .contentShape(Rectangle())
-                .onTapGesture { beginEditing() }
-                .help("Click to rename")
-        }
-    }
-
-    private func beginEditing() {
-        draft = folder.name
-        editing = true
-        fieldFocused = true
-    }
-
-    private func commit() {
-        let value = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        editing = false
-        onRenameEnded()
-        guard !value.isEmpty, value != folder.name else { return }
-        onRename(value)
-    }
-
-    private func cancel() {
-        draft = ""
-        editing = false
-        onRenameEnded()
-    }
 }
 ```
 
-- [ ] **Step 4: Verify it compiles**
+- [ ] **Step 5: Verify it compiles**
 
 Run the Debug build command above.
 Expected: `** BUILD SUCCEEDED **`. The tiles are not yet referenced anywhere; this step only proves they compile.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add App/Sources/UI/Beta/ConversationTile.swift App/Sources/UI/Beta/FolderTile.swift \
-        App/Sources/UI/Theme.swift
-git commit -m "feat(beta): add conversation and folder springboard tiles"
+git add App/Sources/UI/Beta/RenameableLabel.swift App/Sources/UI/Beta/ConversationTile.swift \
+        App/Sources/UI/Beta/FolderTile.swift App/Sources/UI/Theme.swift
+git commit -m "feat(beta): add springboard tiles with a shared renameable label"
 ```
 
 ---
