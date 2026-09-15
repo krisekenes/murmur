@@ -16,3 +16,6 @@ release/
 .env.*
 *.p12
 *.mobileprovision
+
+# Subagent-driven development scratch (ledger, briefs, review packages)
+.superpowers/
