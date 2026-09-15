@@ -111,10 +111,19 @@ struct SpringboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Dropping on empty canvas inside a folder takes the conversation back out.
         .dropDestination(for: ConversationRef.self) { refs, _ in
-            guard openFolderID != nil, let ref = refs.first else { return false }
-            state.moveConversation(ref.id, to: nil)
-            return true
+            unfileDropped(refs, requiringOpenFolder: true)
         }
+    }
+
+    /// Dragging a tile out of an open folder unfiles it. Guarded on `!isSearching`
+    /// because the flattened search grid is not "inside" any folder — the remembered
+    /// `openFolderID` would otherwise unfile a conversation from a folder you cannot
+    /// even see. One helper so the guard cannot drift between drop sites.
+    private func unfileDropped(_ refs: [ConversationRef], requiringOpenFolder: Bool) -> Bool {
+        guard !isSearching, let ref = refs.first else { return false }
+        if requiringOpenFolder && openFolderID == nil { return false }
+        state.moveConversation(ref.id, to: nil)
+        return true
     }
 
     private func conversationTile(_ entry: HistoryEntry) -> some View {
@@ -128,8 +137,17 @@ struct SpringboardView: View {
         .dropDestination(for: ConversationRef.self) { refs, _ in
             guard let ref = refs.first, ref.id != entry.id else { return false }
             guard let result = state.groupConversations(ref.id, entry.id) else { return false }
-            openFolderID = nil
-            if result.shouldPromptForName { renamingFolderID = result.folderID }
+            if result.shouldPromptForName {
+                // The name field can only take focus once the folder's tile renders, and a
+                // flattened search grid hides folder tiles — so surface the root grid.
+                search = ""
+                openFolderID = nil
+                renamingFolderID = result.folderID
+            } else if !isSearching {
+                // Both tiles moved into the folder, so the open folder no longer shows them.
+                // While searching, openFolderID is only a memo for when search clears.
+                openFolderID = nil
+            }
             return true
         } isTargeted: { targeted in
             if targeted { dropTargetID = entry.id }
@@ -176,9 +194,7 @@ struct SpringboardView: View {
                 .foregroundStyle(Theme.accent)
                 // Dragging a tile onto the breadcrumb takes it out of the folder.
                 .dropDestination(for: ConversationRef.self) { refs, _ in
-                    guard let ref = refs.first else { return false }
-                    state.moveConversation(ref.id, to: nil)
-                    return true
+                    unfileDropped(refs, requiringOpenFolder: false)
                 }
                 Text("/").foregroundStyle(.tertiary)
                 Text(folder.name).fontWeight(.semibold)
