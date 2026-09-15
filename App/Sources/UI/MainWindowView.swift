@@ -21,11 +21,15 @@ struct MainWindowView: View {
                 statusMessage(notice)
             }
             Divider().opacity(0.5)
-            HSplitView {
-                FeedView(state: state, search: $search, selectedID: $selectedID)
-                    .frame(minWidth: 240, idealWidth: 300, maxWidth: 440)
-                rightPane
-                    .frame(minWidth: 380)
+            if state.betaMode {
+                SpringboardView(state: state, search: $search)
+            } else {
+                HSplitView {
+                    FeedView(state: state, search: $search, selectedID: $selectedID)
+                        .frame(minWidth: 240, idealWidth: 300, maxWidth: 440)
+                    rightPane
+                        .frame(minWidth: 380)
+                }
             }
         }
         .frame(minWidth: 720, minHeight: 460)
@@ -91,12 +95,22 @@ struct MainWindowView: View {
             )
             .animation(.easeOut(duration: 0.15), value: searchFocused)
 
-            Button { selectedID = nil } label: {
-                Label("Scratchpad", systemImage: "books.vertical")
+            if !state.betaMode {
+                Button { selectedID = nil } label: {
+                    Label("Scratchpad", systemImage: "books.vertical")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Open editable scratchpad pages")
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help("Open editable scratchpad pages")
+
+            Toggle(isOn: $state.betaMode) {
+                Text("Beta").font(.system(size: 11, weight: .medium))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .tint(Theme.accent)
+            .help("Switch between the classic feed and the springboard playground")
 
             StatusDot(phase: state.phase)
 
