@@ -78,6 +78,18 @@ public final class HistoryStore {
         persist()
     }
 
+    /// Promote a tag to index 0 — the springboard shows `tags.first` as the
+    /// conversation's filename. Reordering avoids a new stored property, so
+    /// search, filters, and the tag editor keep working unchanged.
+    public func setPrimaryTag(_ tag: String, for id: UUID) {
+        let tag = NoteTagger.normalize(tag)
+        guard !tag.isEmpty, let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        guard entries[index].tags.first != tag else { return }
+        entries[index].tags.removeAll { $0 == tag }
+        entries[index].tags.insert(tag, at: 0)
+        persist()
+    }
+
     public func move(_ id: UUID, to folderID: UUID?) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
         entries[index].folderID = folderID

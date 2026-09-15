@@ -66,4 +66,59 @@ final class HistoryStoreTests: XCTestCase {
         store.delete(id: store.entries[0].id)
         XCTAssertEqual(store.entries.map(\.raw), ["drop"])
     }
+
+    private func primaryTagStore() throws -> (HistoryStore, UUID, URL) {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent("history.json")
+        let store = try HistoryStore(fileURL: url)
+        let id = UUID()
+        store.append(HistoryEntry(id: id, raw: "r", polished: "p", createdAt: Date(),
+                                  appName: "Murmur", tags: ["work", "interview", "tasks"]))
+        return (store, id, url)
+    }
+
+    func test_setPrimaryTagMovesAnExistingTagToFrontWithoutDuplicating() throws {
+        let (store, id, _) = try primaryTagStore()
+        store.setPrimaryTag("interview", for: id)
+        XCTAssertEqual(store.entries[0].tags, ["interview", "work", "tasks"])
+    }
+
+    func test_setPrimaryTagInsertsAnUnknownTagAtFront() throws {
+        let (store, id, _) = try primaryTagStore()
+        store.setPrimaryTag("screener", for: id)
+        XCTAssertEqual(store.entries[0].tags, ["screener", "work", "interview", "tasks"])
+    }
+
+    func test_setPrimaryTagNormalizesInput() throws {
+        let (store, id, _) = try primaryTagStore()
+        store.setPrimaryTag("#Job Interview", for: id)
+        XCTAssertEqual(store.entries[0].tags.first, "job-interview")
+    }
+
+    func test_setPrimaryTagIgnoresBlankInput() throws {
+        let (store, id, _) = try primaryTagStore()
+        store.setPrimaryTag("   ", for: id)
+        XCTAssertEqual(store.entries[0].tags, ["work", "interview", "tasks"])
+    }
+
+    func test_setPrimaryTagIsIdempotent() throws {
+        let (store, id, _) = try primaryTagStore()
+        store.setPrimaryTag("interview", for: id)
+        store.setPrimaryTag("interview", for: id)
+        XCTAssertEqual(store.entries[0].tags, ["interview", "work", "tasks"])
+    }
+
+    func test_setPrimaryTagPersists() throws {
+        let (store, id, url) = try primaryTagStore()
+        store.setPrimaryTag("interview", for: id)
+        let reloaded = try HistoryStore(fileURL: url)
+        XCTAssertEqual(reloaded.entries[0].tags.first, "interview")
+    }
+
+    func test_setPrimaryTagIgnoresUnknownEntry() throws {
+        let (store, _, _) = try primaryTagStore()
+        store.setPrimaryTag("interview", for: UUID())
+        XCTAssertEqual(store.entries[0].tags, ["work", "interview", "tasks"])
+    }
 }
