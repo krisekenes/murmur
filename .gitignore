@@ -19,3 +19,6 @@ release/
 
 # Subagent-driven development scratch (ledger, briefs, review packages)
 .superpowers/
+
+# Claude Code worktrees are scratch checkouts, not repository content.
+.claude/worktrees/
