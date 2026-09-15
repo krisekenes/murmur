@@ -47,6 +47,11 @@ targets:
         CFBundleDisplayName: Murmur
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: com.murmur.conversation
+            UTTypeDescription: Murmur Conversation
+            UTTypeConformsTo:
+              - public.data
     entitlements:
       path: App/Murmur.entitlements
       properties:

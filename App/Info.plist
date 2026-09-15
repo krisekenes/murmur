@@ -24,5 +24,18 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Murmur transcribes your speech locally. Audio never leaves your Mac.</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Murmur Conversation</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.murmur.conversation</string>
+		</dict>
+	</array>
 </dict>
 </plist>
