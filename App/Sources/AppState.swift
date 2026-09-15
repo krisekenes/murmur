@@ -106,6 +106,93 @@ public final class AppState: ObservableObject {
         refreshHistory()
     }
 
+    // MARK: - Beta springboard
+
+    @Published public var betaMode: Bool = UserDefaults.standard.bool(forKey: "betaMode") {
+        didSet { UserDefaults.standard.set(betaMode, forKey: "betaMode") }
+    }
+
+    public struct GroupingResult: Equatable, Sendable {
+        public let folderID: UUID
+        /// True when the name was a fallback and the UI should focus the name field.
+        public let shouldPromptForName: Bool
+    }
+
+    /// Non-nil while the last grouping can still be undone this session.
+    @Published public var lastGroupingSummary: String?
+    private var lastGrouping: (folderID: UUID, movedIDs: [UUID], folderWasCreated: Bool)?
+
+    /// Drop one conversation onto another: create or merge a folder and move both in.
+    /// Passing a name overrides the proposal, which is how inline renaming commits.
+    @discardableResult
+    public func groupConversations(_ first: UUID, _ second: UUID, name: String? = nil) -> GroupingResult? {
+        guard first != second,
+              let a = historyEntries.first(where: { $0.id == first }),
+              let b = historyEntries.first(where: { $0.id == second }) else { return nil }
+        let proposal = TileGrouping.propose(a.tags, b.tags)
+        let folderName = (name ?? proposal.suggestedName).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Record whether the folder already existed, so undo only removes what we made.
+        let existed = notebook.folders.contains {
+            $0.name.localizedCaseInsensitiveCompare(folderName) == .orderedSame
+        }
+        guard let folderID = notebook.createFolder(name: folderName, anchors: proposal.anchors) else { return nil }
+        history.move(a.id, to: folderID)
+        history.move(b.id, to: folderID)
+        lastGrouping = (folderID, [a.id, b.id], !existed)
+        lastGroupingSummary = "Grouped 2 into \(folderName)"
+        folders = notebook.folders
+        refreshHistory()
+        return GroupingResult(folderID: folderID,
+                              shouldPromptForName: name == nil && !proposal.isConfident)
+    }
+
+    /// Drop a conversation onto an existing folder: file it and strengthen the anchors.
+    public func fileConversation(_ id: UUID, into folderID: UUID) {
+        guard let entry = historyEntries.first(where: { $0.id == id }),
+              entry.folderID != folderID,
+              folders.contains(where: { $0.id == folderID }) else { return }
+        notebook.reinforceAnchors(folderID, with: entry.tags)
+        history.move(id, to: folderID)
+        folders = notebook.folders
+        refreshHistory()
+    }
+
+    /// Rename a tile: promote a tag to the front, where the springboard reads it.
+    public func setPrimaryConversationTag(_ tag: String, id: UUID) {
+        history.setPrimaryTag(tag, for: id)
+        refreshHistory()
+    }
+
+    /// Reverse the last grouping. Unfiles only entries still in that folder, so a
+    /// manual move made afterwards survives. Removes the folder only if this action
+    /// created it and nothing — conversation or scratchpad note — remains inside.
+    public func undoLastGrouping() {
+        guard let grouping = lastGrouping else { return }
+        for id in grouping.movedIDs
+        where history.entries.first(where: { $0.id == id })?.folderID == grouping.folderID {
+            history.move(id, to: nil)
+        }
+        if grouping.folderWasCreated,
+           !history.entries.contains(where: { $0.folderID == grouping.folderID }),
+           !notebook.pages.contains(where: { $0.folderID == grouping.folderID }) {
+            notebook.deleteFolder(grouping.folderID)
+        }
+        lastGrouping = nil
+        lastGroupingSummary = nil
+        folders = notebook.folders
+        refreshHistory()
+    }
+
+    /// NoteFolder is shared with the scratchpad, so a folder tile must count both
+    /// kinds of content or it misreports what deleting the folder would touch.
+    public func conversationCount(inFolder id: UUID) -> Int {
+        historyEntries.reduce(0) { $0 + ($1.folderID == id ? 1 : 0) }
+    }
+
+    public func noteCount(inFolder id: UUID) -> Int {
+        pages.reduce(0) { $0 + ($1.folderID == id ? 1 : 0) }
+    }
+
     private func refreshHistory() {
         historyEntries = history.entries
         recentPeek = Array(history.entries.prefix(3))
