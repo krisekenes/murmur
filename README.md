@@ -8,10 +8,15 @@ Requires an **Apple Silicon Mac (M1 or later), macOS 14 or later**, and an inter
 
 1. Open the [Releases page](https://github.com/krisekenes/murmur/releases) and download `Murmur-<version>-macOS-arm64.zip` from the release assets. GitHub's “Source code” ZIP is for developers; it isn't an app. If no release is available yet, use the build instructions below.
 2. Unzip it and drag **Murmur.app** into **Applications** before opening it.
-3. Grant Microphone and Accessibility access when prompted. If your hotkey still doesn't work, check Input Monitoring in System Settings → Privacy & Security and restart Murmur.
-4. Wait for model preparation to finish. First launch downloads the speech and polish models and can take several minutes. Later launches reuse the cached models.
+3. Open Terminal and run this command, then open Murmur:
 
-Unnotarized preview builds may trigger a macOS warning. For a build you trust, follow [Apple's Open Anyway instructions](https://support.apple.com/en-us/102445) in System Settings → Privacy & Security after attempting to open it. A managed Mac may prohibit this.
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Murmur.app
+   ```
+
+   Preview builds aren't notarized by Apple yet, so without this step macOS reports “Murmur” Not Opened and offers only Move to Trash. The command removes the quarantine flag your browser added to this download; it affects only Murmur. Repeat it after installing each new version. To avoid Terminal, try opening Murmur once, then click **Open Anyway** in System Settings → Privacy & Security ([Apple's instructions](https://support.apple.com/en-us/102445)). A managed Mac may block both methods.
+4. Grant Microphone and Accessibility access when prompted. If your hotkey still doesn't work, check Input Monitoring in System Settings → Privacy & Security and restart Murmur.
+5. Wait for model preparation to finish. First launch downloads the speech and polish models and can take several minutes. Later launches reuse the cached models.
 
 ## Use
 
