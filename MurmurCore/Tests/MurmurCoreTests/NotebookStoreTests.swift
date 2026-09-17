@@ -2,6 +2,36 @@ import XCTest
 @testable import MurmurCore
 
 final class NotebookStoreTests: XCTestCase {
+    func test_mergeFolderPreservesPagesSelectionAndAnchorsAfterReload() throws {
+        let url = tempURL()
+        let store = NotebookStore(fileURL: url)
+        let source = try XCTUnwrap(store.createFolder(name: "Source", anchors: ["travel": 3]))
+        let target = try XCTUnwrap(store.createFolder(name: "Target", anchors: ["travel": 1, "work": 2]))
+        store.moveCurrent(to: source)
+        store.updateCurrent(content: "Keep this text")
+        store.addTag("trip")
+        let current = store.currentID
+        store.mergeFolder(source, into: target)
+        let reloaded = NotebookStore(fileURL: url)
+        XCTAssertEqual(reloaded.currentID, current)
+        XCTAssertEqual(reloaded.currentContent, "Keep this text")
+        XCTAssertEqual(reloaded.pages.first?.tags, ["trip"])
+        XCTAssertEqual(reloaded.pages.first?.folderID, target)
+        XCTAssertEqual(reloaded.folders.count, 1)
+        XCTAssertEqual(reloaded.folders.first?.anchorTags, ["travel": 3, "work": 2])
+    }
+
+    func test_mergeFolderRejectsMissingAndIdenticalDestinations() throws {
+        let store = NotebookStore(fileURL: tempURL())
+        let folder = try XCTUnwrap(store.createFolder(name: "Keep"))
+        store.moveCurrent(to: folder)
+        store.mergeFolder(folder, into: folder)
+        store.mergeFolder(folder, into: UUID())
+        store.mergeFolder(UUID(), into: folder)
+        XCTAssertEqual(store.folders.map(\.id), [folder])
+        XCTAssertEqual(store.pages.first?.folderID, folder)
+    }
+
     private func tempURL() -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("notebook-\(UUID()).json")
     }

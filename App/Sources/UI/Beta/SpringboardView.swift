@@ -11,7 +11,9 @@ struct SpringboardView: View {
     @State private var openFolderID: UUID?
     @State private var dropTargetID: UUID?
     @State private var renamingFolderID: UUID?
-    @State private var detailEntry: HistoryEntry?
+    private struct ConversationSelection: Identifiable { let id: UUID }
+    @State private var detailSelection: ConversationSelection?
+    @State private var openScratchpadAfterDetail = false
     @State private var showingScratchpad = false
 
     private var isSearching: Bool {
@@ -50,20 +52,19 @@ struct SpringboardView: View {
             footer
         }
         .background(Theme.canvas)
-        .sheet(item: $detailEntry) { entry in
-            DictationDetailView(
+        .sheet(item: $detailSelection, onDismiss: {
+            if openScratchpadAfterDetail {
+                openScratchpadAfterDetail = false
+                showingScratchpad = true
+            }
+        }) { selection in
+            ConversationDetailSheet(
                 state: state,
-                entry: entry,
-                onClose: { detailEntry = nil },
-                onCopy: { copy(entry.polished.isEmpty ? entry.raw : entry.polished) },
+                entryID: selection.id,
+                onClose: { detailSelection = nil },
                 onSend: {
-                    state.appendToScratchpad(entry.polished)
-                    detailEntry = nil
-                    showingScratchpad = true
-                },
-                onDelete: {
-                    state.deleteDictation(id: entry.id)
-                    detailEntry = nil
+                    openScratchpadAfterDetail = true
+                    detailSelection = nil
                 }
             )
             .frame(minWidth: 460, minHeight: 420)
@@ -130,7 +131,7 @@ struct SpringboardView: View {
         ConversationTile(
             entry: entry,
             isDropTarget: dropTargetID == entry.id,
-            onOpen: { detailEntry = entry },
+            onOpen: { detailSelection = ConversationSelection(id: entry.id) },
             onRename: { state.setPrimaryConversationTag($0, id: entry.id) }
         )
         .draggable(ConversationRef(entry: entry))
@@ -148,8 +149,8 @@ struct SpringboardView: View {
                 let folderID = result.folderID
                 let (dragged, dropped) = (ref.id, entry.id)
                 Task {
-                    let named = await state.nameGroupedFolder(folderID, dragged, dropped)
-                    if !named { renamingFolderID = folderID }
+                    let outcome = await state.nameGroupedFolder(folderID, dragged, dropped)
+                    if case .needsManualName = outcome { renamingFolderID = folderID }
                 }
             } else if !isSearching {
                 // Both tiles moved into the folder, so the open folder no longer shows them.
@@ -176,7 +177,8 @@ struct SpringboardView: View {
             beginsRenaming: renamingFolderID == folder.id,
             onOpen: { openFolderID = folder.id },
             onRename: { _ = state.renameFolder(folder.id, name: $0) },
-            onRenameEnded: { renamingFolderID = nil }
+            onRenameEnded: { renamingFolderID = nil },
+            onRenameBegan: { state.cancelFolderNaming(folder.id) }
         )
         .dropDestination(for: ConversationRef.self) { refs, _ in
             guard let ref = refs.first else { return false }
@@ -263,8 +265,37 @@ struct SpringboardView: View {
         .padding(.vertical, 10)
     }
 
-    private func copy(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+}
+
+/// Observe the store inside the sheet; its selection holds only an ID, never a
+/// snapshot whose tags and folder can go stale while the sheet remains open.
+struct ConversationDetailSheet: View {
+    @ObservedObject var state: AppState
+    let entryID: UUID
+    let onClose: () -> Void
+    let onSend: () -> Void
+
+    var entry: HistoryEntry? { state.historyEntries.first { $0.id == entryID } }
+
+    var body: some View {
+        Group {
+            if let entry {
+                DictationDetailView(
+                    state: state,
+                    entry: entry,
+                    onClose: onClose,
+                    onCopy: {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(entry.polished.isEmpty ? entry.raw : entry.polished, forType: .string)
+                    },
+                    onSend: {
+                        state.appendToScratchpad(entry.polished.isEmpty ? entry.raw : entry.polished)
+                        onSend()
+                    },
+                    onDelete: { state.deleteDictation(id: entryID); onClose() }
+                )
+            }
+        }
+        .onChange(of: entry == nil) { _, missing in if missing { onClose() } }
     }
 }

@@ -59,6 +59,8 @@ This runs tests, generates the Xcode project, builds Release, collects dependenc
 
 For development, run `xcodegen generate`, open `Murmur.xcodeproj`, and select the Murmur scheme. Approve the MLX macro if Xcode asks. Test the standalone core with `swift test --package-path MurmurCore`.
 
+Run `bash tools/check-beta-state.sh` for beta state regression checks with isolated temporary data. These checks cover delayed folder naming, manual edits, undo, page merges, and live conversation details, and also run during release packaging.
+
 `project.yml` is the project source of truth. The generated Xcode project is ignored, except for the committed `Package.resolved` dependency pins. Regenerate after changing project settings.
 
 See [release instructions](docs/RELEASING.md) for signing, notarization, and GitHub uploads, and [third-party notices](THIRD_PARTY_NOTICES.md) for model attribution.

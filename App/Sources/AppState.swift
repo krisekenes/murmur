@@ -37,8 +37,8 @@ public final class AppState: ObservableObject {
     public let notebook: NotebookStore
     private var isLoadingPage = false
 
-    public init() {
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    public init(supportDirectory: URL? = nil) {
+        let support = supportDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Murmur", isDirectory: true)
         history = (try? HistoryStore(fileURL: support.appendingPathComponent("history.json"), limit: 200))
             ?? (try! HistoryStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("history.json")))
@@ -73,10 +73,15 @@ public final class AppState: ObservableObject {
     public func createFolder(_ name: String) { notebook.createFolder(name: name); loadCurrentPage() }
     public func renameFolder(_ id: UUID, name: String) -> Bool {
         let renamed = notebook.renameFolder(id, name: name)
+        if renamed {
+            cancelFolderNaming(id)
+            updateGroupingSummary(for: id)
+        }
         loadCurrentPage()
         return renamed
     }
     public func deleteFolder(_ id: UUID) {
+        cancelFolderNaming(id)
         history.unfile(folderID: id)
         refreshHistory()
         notebook.deleteFolder(id)
@@ -120,7 +125,15 @@ public final class AppState: ObservableObject {
 
     /// Non-nil while the last grouping can still be undone this session.
     @Published public var lastGroupingSummary: String?
-    private var lastGrouping: (folderID: UUID, movedIDs: [UUID], folderWasCreated: Bool)?
+    private var lastGrouping: (id: UUID, folderID: UUID, movedIDs: [UUID], folderWasCreated: Bool)?
+    private struct PendingFolderName {
+        let groupingID: UUID
+        let placeholder: String
+        let conversationIDs: Set<UUID>
+    }
+    private var pendingFolderNames: [UUID: PendingFolderName] = [:]
+
+    public enum FolderNamingOutcome: Equatable, Sendable { case named, needsManualName, discarded }
 
     /// Drop one conversation onto another: create or merge a folder and move both in.
     /// Passing a name overrides the proposal, which is how inline renaming commits.
@@ -148,7 +161,12 @@ public final class AppState: ObservableObject {
         guard let folderID = notebook.createFolder(name: folderName, anchors: proposal.anchors) else { return nil }
         history.move(a.id, to: folderID)
         history.move(b.id, to: folderID)
-        lastGrouping = (folderID, [a.id, b.id], !existed)
+        let groupingID = UUID()
+        lastGrouping = (groupingID, folderID, [a.id, b.id], !existed)
+        if name == nil && !proposal.isConfident {
+            pendingFolderNames[folderID] = PendingFolderName(
+                groupingID: groupingID, placeholder: folderName, conversationIDs: [a.id, b.id])
+        }
         lastGroupingSummary = "Grouped 2 into \(folderName)"
         folders = notebook.folders
         refreshHistory()
@@ -162,48 +180,79 @@ public final class AppState: ObservableObject {
     public var nameFolderWithModel: ((String, String) async -> String?)?
 
     /// Ask the local model to name a folder a drop just created, then apply it.
-    /// Returns false when the model is unloaded, busy, times out, or answers
-    /// unusably, which is the caller's cue to focus the rename field instead —
-    /// the folder keeps its editable placeholder either way.
+    /// Only a still-current request may rename or prompt for manual naming.
+    /// Discarded requests must not steal focus from newer user actions.
     @discardableResult
-    public func nameGroupedFolder(_ folderID: UUID, _ first: UUID, _ second: UUID) async -> Bool {
-        guard let nameFolderWithModel,
+    public func nameGroupedFolder(_ folderID: UUID, _ first: UUID, _ second: UUID) async -> FolderNamingOutcome {
+        guard let request = pendingFolderNames[folderID],
+              request.conversationIDs == Set([first, second]),
+              isNamingCurrent(request, folderID: folderID),
               let a = historyEntries.first(where: { $0.id == first }),
-              let b = historyEntries.first(where: { $0.id == second }),
-              let suggested = await nameFolderWithModel(a.polished, b.polished) else { return false }
-        applyGeneratedFolderName(suggested, to: folderID)
-        return true
+              let b = historyEntries.first(where: { $0.id == second }) else { return .discarded }
+        defer {
+            if pendingFolderNames[folderID]?.groupingID == request.groupingID {
+                pendingFolderNames[folderID] = nil
+            }
+        }
+        let suggested = await nameFolderWithModel?(
+            a.polished.isEmpty ? a.raw : a.polished,
+            b.polished.isEmpty ? b.raw : b.polished)
+        guard !Task.isCancelled, isNamingCurrent(request, folderID: folderID) else { return .discarded }
+        guard let name = suggested?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+            return lastGrouping?.id == request.groupingID ? .needsManualName : .discarded
+        }
+        return applyGeneratedFolderName(name, to: folderID) ? .named : .discarded
+    }
+
+    /// Called when editing starts, so even an uncommitted draft beats the model.
+    public func cancelFolderNaming(_ folderID: UUID) {
+        pendingFolderNames[folderID] = nil
+    }
+
+    private func isNamingCurrent(_ request: PendingFolderName, folderID: UUID) -> Bool {
+        pendingFolderNames[folderID]?.groupingID == request.groupingID
+            && notebook.folders.first(where: { $0.id == folderID })?.name == request.placeholder
+            && request.conversationIDs.allSatisfy { id in
+                history.entries.contains { $0.id == id && $0.folderID == folderID }
+            }
+    }
+
+    private func updateGroupingSummary(for folderID: UUID) {
+        guard let grouping = lastGrouping, grouping.folderID == folderID,
+              let folder = notebook.folders.first(where: { $0.id == folderID }) else { return }
+        lastGroupingSummary = "Grouped \(grouping.movedIDs.count) into \(folder.name)"
     }
 
     /// Apply a generated name, merging when it is already taken. `renameFolder`
     /// refuses a duplicate, and leaving the placeholder would waste the answer —
     /// so the conversations move into the folder that owns the name, exactly as
     /// `createFolder` would have merged them had the name been known at drop time.
-    private func applyGeneratedFolderName(_ name: String, to folderID: UUID) {
-        guard notebook.folders.contains(where: { $0.id == folderID }) else { return }
+    private func applyGeneratedFolderName(_ name: String, to folderID: UUID) -> Bool {
+        guard notebook.folders.contains(where: { $0.id == folderID }) else { return false }
         if notebook.renameFolder(folderID, name: name) {
             folders = notebook.folders
-            lastGroupingSummary = "Grouped 2 into \(name)"
-            return
+            updateGroupingSummary(for: folderID)
+            return true
         }
         guard let target = notebook.folders.first(where: {
             $0.id != folderID && $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame
-        }) else { return }
+        }) else { return false }
         for entry in history.entries where entry.folderID == folderID {
             notebook.reinforceAnchors(target.id, with: entry.tags)
             history.move(entry.id, to: target.id)
         }
-        notebook.deleteFolder(folderID)
+        notebook.mergeFolder(folderID, into: target.id)
         // Undo now has to reverse a merge: the surviving folder predates this
         // grouping, so undo must never delete it.
         if var grouping = lastGrouping, grouping.folderID == folderID {
             grouping.folderID = target.id
             grouping.folderWasCreated = false
             lastGrouping = grouping
+            updateGroupingSummary(for: target.id)
         }
-        folders = notebook.folders
-        lastGroupingSummary = "Grouped 2 into \(name)"
+        loadCurrentPage()
         refreshHistory()
+        return true
     }
 
     /// Drop a conversation onto an existing folder: file it and strengthen the anchors.
@@ -228,6 +277,7 @@ public final class AppState: ObservableObject {
     /// created it and nothing — conversation or scratchpad note — remains inside.
     public func undoLastGrouping() {
         guard let grouping = lastGrouping else { return }
+        cancelFolderNaming(grouping.folderID)
         for id in grouping.movedIDs
         where history.entries.first(where: { $0.id == id })?.folderID == grouping.folderID {
             history.move(id, to: nil)

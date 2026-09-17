@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.."
 
 command -v xcodegen >/dev/null || { echo 'Install XcodeGen first (brew install xcodegen).' >&2; exit 1; }
 swift test --package-path MurmurCore
+bash tools/check-beta-state.sh
 xcodegen generate
 xcodebuild -project Murmur.xcodeproj -scheme Murmur -configuration Release \
   -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/release \

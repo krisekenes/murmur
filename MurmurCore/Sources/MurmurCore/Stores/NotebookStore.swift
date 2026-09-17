@@ -180,6 +180,19 @@ public final class NotebookStore {
         return true
     }
 
+    /// Move all pages and anchors together before removing the source folder.
+    public func mergeFolder(_ sourceID: UUID, into targetID: UUID) {
+        guard sourceID != targetID,
+              let source = folders.first(where: { $0.id == sourceID }),
+              let targetIndex = folders.firstIndex(where: { $0.id == targetID }) else { return }
+        folders[targetIndex].anchorTags = TileGrouping.merged(folders[targetIndex].anchorTags, source.anchorTags)
+        for index in pages.indices where pages[index].folderID == sourceID {
+            pages[index].folderID = targetID
+        }
+        folders.removeAll { $0.id == sourceID }
+        persist()
+    }
+
     /// Removing a folder keeps its notes in Unfiled.
     public func deleteFolder(_ id: UUID) {
         folders.removeAll { $0.id == id }

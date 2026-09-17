@@ -14,6 +14,7 @@ struct RenameableLabel: View {
     let beginsEditing: Bool
     let onCommit: (String) -> Void
     let onEditingEnded: () -> Void
+    var onEditingBegan: () -> Void = {}
 
     @State private var editing = false
     @State private var draft = ""
@@ -52,6 +53,7 @@ struct RenameableLabel: View {
     }
 
     private func beginEditing() {
+        onEditingBegan()
         draft = editSeed
         editing = true
         fieldFocused = true

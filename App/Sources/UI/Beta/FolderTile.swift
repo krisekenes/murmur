@@ -16,6 +16,7 @@ struct FolderTile: View {
     let onOpen: () -> Void
     let onRename: (String) -> Void
     let onRenameEnded: () -> Void
+    let onRenameBegan: () -> Void
 
     @State private var hover = false
 
@@ -35,7 +36,8 @@ struct FolderTile: View {
                 color: .primary,
                 beginsEditing: beginsRenaming,
                 onCommit: onRename,
-                onEditingEnded: onRenameEnded
+                onEditingEnded: onRenameEnded,
+                onEditingBegan: onRenameBegan
             )
             Text(countLabel)
                 .font(.system(size: 9))
