@@ -64,6 +64,19 @@ public final class HistoryStore {
         persist()
     }
 
+    public func deleteContents(ofFolder id: UUID) {
+        entries.removeAll { $0.folderID == id }
+        persist()
+    }
+
+    public func moveContents(ofFolder sourceID: UUID, into targetID: UUID) {
+        guard sourceID != targetID else { return }
+        for index in entries.indices where entries[index].folderID == sourceID {
+            entries[index].folderID = targetID
+        }
+        persist()
+    }
+
     public func addTag(_ tag: String, to id: UUID) {
         let tag = NoteTagger.normalize(tag)
         guard !tag.isEmpty, let index = entries.firstIndex(where: { $0.id == id }),

@@ -122,6 +122,7 @@ struct MainWindowView: View {
             .help("Settings")
         }
         .padding(.horizontal, 16)
-        .frame(height: 44)
+        .frame(height: state.betaMode ? 54 : 44)
+        .background(state.betaMode ? Theme.midnight : Theme.canvas)
     }
 }

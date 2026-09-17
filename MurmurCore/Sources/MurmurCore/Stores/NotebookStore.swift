@@ -43,8 +43,10 @@ public struct NoteFolder: Codable, Identifiable, Equatable, Sendable {
     /// Tags this folder is "about", weighted by how deliberately they were set.
     /// Seeded when conversations are grouped by hand, reinforced on later drops.
     public var anchorTags: [String: Double]
+    public var constellationID: UUID?
+    public var effectiveConstellationID: UUID { constellationID ?? id }
 
-    private enum CodingKeys: String, CodingKey { case id, name, anchorTags }
+    private enum CodingKeys: String, CodingKey { case id, name, anchorTags, constellationID }
 
     public init(id: UUID, name: String, anchorTags: [String: Double] = [:]) {
         self.id = id
@@ -60,6 +62,7 @@ public struct NoteFolder: Codable, Identifiable, Equatable, Sendable {
         // written before this feature — and NotebookStore replaces an unreadable
         // notebook with a blank page. decodeIfPresent is the data-loss guard.
         anchorTags = try values.decodeIfPresent([String: Double].self, forKey: .anchorTags) ?? [:]
+        constellationID = try values.decodeIfPresent(UUID.self, forKey: .constellationID)
     }
 }
 
@@ -197,6 +200,22 @@ public final class NotebookStore {
     public func deleteFolder(_ id: UUID) {
         folders.removeAll { $0.id == id }
         for index in pages.indices where pages[index].folderID == id { pages[index].folderID = nil }
+        persist()
+    }
+
+    public func regenerateConstellation(_ id: UUID) {
+        guard let index = folders.firstIndex(where: { $0.id == id }) else { return }
+        folders[index].constellationID = UUID()
+        persist()
+    }
+
+    /// Delete the collection and its pages, retaining a valid notebook selection.
+    public func deleteFolderAndContents(_ id: UUID) {
+        guard folders.contains(where: { $0.id == id }) else { return }
+        pages.removeAll { $0.folderID == id }
+        folders.removeAll { $0.id == id }
+        if pages.isEmpty { pages = [ScratchpadPage(updatedAt: Date())] }
+        if !pages.contains(where: { $0.id == currentID }) { currentID = pages[0].id }
         persist()
     }
 

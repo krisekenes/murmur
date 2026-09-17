@@ -10,6 +10,7 @@ struct ConversationTile: View {
     let onRename: (String) -> Void
 
     @State private var hover = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var previewText: String {
         let text = entry.polished.isEmpty ? entry.raw : entry.polished
@@ -23,47 +24,66 @@ struct ConversationTile: View {
     }
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             preview
             RenameableLabel(
                 text: label,
                 editSeed: entry.tags.first ?? "",
-                font: .system(size: 10),
-                color: entry.tags.isEmpty ? Color.secondary : Theme.accent.opacity(0.9),
+                font: .system(size: 12, weight: .medium),
+                color: entry.tags.isEmpty ? Theme.muted : Theme.accent.opacity(0.9),
                 beginsEditing: false,
                 onCommit: onRename,
                 onEditingEnded: {}
             )
+            Text(entry.appName)
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.muted)
+                .lineLimit(1)
+                .frame(height: 14)
         }
-        .frame(width: 132)
+        .frame(maxWidth: .infinity)
     }
 
     private var preview: some View {
-        Text(previewText)
-            .font(.system(size: 10))
-            .lineSpacing(1.5)
-            .foregroundStyle(.primary.opacity(0.85))
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(8)
-            .frame(width: 118, height: 92, alignment: .topLeading)
-            .clipped()
-            .background(RoundedRectangle(cornerRadius: 11).fill(.white.opacity(hover ? 0.09 : 0.05)))
-            .overlay(alignment: .bottom) {
-                // Fade the clipped text instead of slicing a line of glyphs in half.
-                LinearGradient(colors: [.clear, Theme.canvas], startPoint: .top, endPoint: .bottom)
-                    .frame(height: 24)
-                    .allowsHitTesting(false)
+        Group {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack {
+                    Text(entry.createdAt.formatted(date: .abbreviated, time: .omitted))
+                    Spacer()
+                    Image(systemName: "waveform").foregroundStyle(Theme.accent.opacity(0.65))
+                }
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Theme.muted)
+                Text(previewText)
+                    .font(.system(size: 13))
+                    .lineSpacing(3)
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(4)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: 0)
             }
+            .padding(16)
+            .frame(maxWidth: .infinity)
+            .frame(height: Theme.tileHeight)
+            .background(RoundedRectangle(cornerRadius: 17).fill(Theme.tile))
+            .background(RoundedRectangle(cornerRadius: 17).fill(Theme.accent.opacity(0.01))
+                .shadow(color: Theme.accent.opacity(hover || isDropTarget ? 0.13 : 0), radius: 15))
             .overlay(
-                RoundedRectangle(cornerRadius: 11)
-                    .strokeBorder(isDropTarget ? Theme.accent : .white.opacity(0.09),
-                                  lineWidth: isDropTarget ? 2 : 1)
+                RoundedRectangle(cornerRadius: 17)
+                    .strokeBorder(isDropTarget ? Theme.accent : (hover ? Theme.accent.opacity(0.45) : .white.opacity(0.09)), lineWidth: 1)
             )
-            .contentShape(Rectangle())
-            .onTapGesture(perform: onOpen)
-            .onHover { hover = $0 }
-            .animation(.easeOut(duration: 0.14), value: hover)
-            .animation(.easeOut(duration: 0.12), value: isDropTarget)
-            .accessibilityLabel(Text("Conversation: " + String(previewText.prefix(80))))
+            .contentShape(RoundedRectangle(cornerRadius: 17))
+        }
+        // Keep the preview as a drag surface. A nested Button consumes the
+        // mouse-down before the enclosing tile can begin its drag session.
+        .onTapGesture(perform: onOpen)
+        .draggable(ConversationRef(entry: entry))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onOpen() }
+        .onHover { hover = $0 }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: hover)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isDropTarget)
+        .accessibilityLabel(Text("Open conversation: " + String(previewText.prefix(80))))
     }
 }

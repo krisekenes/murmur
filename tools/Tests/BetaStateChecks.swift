@@ -51,7 +51,69 @@ struct BetaStateChecks {
         try await olderMergePreservesUndo()
         try await missingModelPromptsOnlyCurrentGroup()
         try detailReadsLiveEntry()
-        print("10 beta state regression checks passed.")
+        try folderRemovalKeepsOrDeletesContents()
+        try await manualFolderMerge()
+        print("12 beta state regression checks passed.")
+    }
+
+    private static func manualFolderMerge() async throws {
+        let s = state(), gate = DeferredName()
+        let sourcePair = pair(s), targetPair = pair(s), outside = pair(s)
+        let source = s.groupConversations(sourcePair.0, sourcePair.1)!.folderID
+        let task = startNaming(s, folder: source, pair: sourcePair, gate: gate)
+        await gate.waitUntilRequested()
+        let target = s.groupConversations(targetPair.0, targetPair.1, name: "Destination")!.folderID
+        s.notebook.reinforceAnchors(source, with: ["source"])
+        s.notebook.reinforceAnchors(target, with: ["target"])
+        let page = s.notebook.newPage(folderID: source)
+        s.notebook.updateCurrent(content: "Keep this page")
+        s.regenerateConstellation(target)
+        let pattern = s.folders.first { $0.id == target }!.effectiveConstellationID
+        try expect(!s.mergeFolders(source, into: source), "Self merge must be rejected")
+        try expect(!s.mergeFolders(source, into: UUID()), "Missing destination must be rejected")
+        try expect(s.mergeFolders(source, into: target), "Valid merge should succeed")
+        gate.finish("Late generated name")
+        let outcome = await task.value
+        try expect(outcome == .discarded, "Manual merge must invalidate pending naming")
+        try expect(!s.folders.contains { $0.id == source }, "Source folder should be removed")
+        let destination = s.folders.first { $0.id == target }!
+        try expect(destination.name == "Destination" && destination.effectiveConstellationID == pattern,
+                   "Destination appearance and name must survive")
+        try expect(destination.anchorTags["source"] != nil && destination.anchorTags["target"] != nil,
+                   "Both folders' anchors must survive")
+        for id in [sourcePair.0, sourcePair.1, targetPair.0, targetPair.1] {
+            try expect(s.historyEntries.first { $0.id == id }?.folderID == target, "All conversations must merge")
+        }
+        try expect(s.historyEntries.first { $0.id == outside.0 }?.folderID == nil, "Unrelated items must remain unfiled")
+        try expect(s.currentPageID == page && s.scratchpad == "Keep this page", "Current page selection and content must survive")
+        try expect(s.pages.first { $0.id == page }?.folderID == target, "Pages must move to destination")
+        try expect(s.lastGroupingSummary == nil, "Old grouping undo must not undo a manual merge")
+    }
+
+    private static func folderRemovalKeepsOrDeletesContents() throws {
+        for destructive in [false, true] {
+            let s = state()
+            let grouped = pair(s), outside = pair(s)
+            let folder = s.groupConversations(grouped.0, grouped.1, name: "Collection")!.folderID
+            let page = s.notebook.newPage(folderID: folder)
+            s.notebook.updateCurrent(content: "Folder note")
+            if destructive { s.deleteFolderAndContents(folder) }
+            else { s.deleteFolder(folder) }
+            try expect(!s.folders.contains { $0.id == folder }, "Folder must be removed")
+            try expect(s.lastGroupingSummary == nil, "Removed folder must not leave a stale undo banner")
+            try expect(s.historyEntries.contains { $0.id == outside.0 }, "Other conversations must survive")
+            try expect(s.pages.contains { $0.id == s.currentPageID }, "Selection must remain valid")
+            for id in [grouped.0, grouped.1] {
+                let entry = s.historyEntries.first { $0.id == id }
+                try expect((entry == nil) == destructive, "Delete and dissolve must have distinct semantics")
+                try expect(entry?.folderID == nil, "Dissolved conversations must be unfiled")
+            }
+            let savedPage = s.pages.first { $0.id == page }
+            try expect((savedPage == nil) == destructive, "Folder pages must follow the chosen removal action")
+            if !destructive {
+                try expect(savedPage?.content == "Folder note" && savedPage?.folderID == nil, "Dissolve must preserve page content")
+            }
+        }
     }
 
     private static func overlappingGroups() async throws {

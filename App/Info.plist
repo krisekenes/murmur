@@ -36,6 +36,16 @@
 			<key>UTTypeIdentifier</key>
 			<string>com.murmur.conversation</string>
 		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Murmur Folder</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.murmur.folder</string>
+		</dict>
 	</array>
 </dict>
 </plist>

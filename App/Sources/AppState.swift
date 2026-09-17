@@ -82,10 +82,46 @@ public final class AppState: ObservableObject {
     }
     public func deleteFolder(_ id: UUID) {
         cancelFolderNaming(id)
+        clearGroupingForDeletedFolder(id)
         history.unfile(folderID: id)
         refreshHistory()
         notebook.deleteFolder(id)
         loadCurrentPage()
+    }
+    public func regenerateConstellation(_ id: UUID) {
+        notebook.regenerateConstellation(id)
+        loadCurrentPage()
+    }
+    @discardableResult
+    public func mergeFolders(_ sourceID: UUID, into targetID: UUID) -> Bool {
+        guard sourceID != targetID,
+              folders.contains(where: { $0.id == sourceID }),
+              folders.contains(where: { $0.id == targetID }) else { return false }
+        // A manual merge supersedes in-flight naming for either collection.
+        cancelFolderNaming(sourceID)
+        cancelFolderNaming(targetID)
+        clearGroupingForDeletedFolder(sourceID)
+        clearGroupingForDeletedFolder(targetID)
+        history.moveContents(ofFolder: sourceID, into: targetID)
+        notebook.mergeFolder(sourceID, into: targetID)
+        refreshHistory()
+        loadCurrentPage()
+        return true
+    }
+    public func deleteFolderAndContents(_ id: UUID) {
+        guard folders.contains(where: { $0.id == id }) else { return }
+        cancelFolderNaming(id)
+        clearGroupingForDeletedFolder(id)
+        history.deleteContents(ofFolder: id)
+        notebook.deleteFolderAndContents(id)
+        refreshHistory()
+        loadCurrentPage()
+    }
+    private func clearGroupingForDeletedFolder(_ id: UUID) {
+        if lastGrouping?.folderID == id {
+            lastGrouping = nil
+            lastGroupingSummary = nil
+        }
     }
     public func addConversationTag(_ tag: String, id: UUID) { history.addTag(tag, to: id); refreshHistory() }
     public func removeConversationTag(_ tag: String, id: UUID) { history.removeTag(tag, from: id); refreshHistory() }

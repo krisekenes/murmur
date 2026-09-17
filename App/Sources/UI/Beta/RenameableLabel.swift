@@ -47,7 +47,7 @@ struct RenameableLabel: View {
                     .accessibilityAddTraits(.isButton)
             }
         }
-        .frame(width: 118)
+        .frame(maxWidth: .infinity, minHeight: 22)
         .onAppear { if beginsEditing { beginEditing() } }
         .onChange(of: beginsEditing) { _, begins in if begins { beginEditing() } }
     }

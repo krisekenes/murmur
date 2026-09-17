@@ -15,6 +15,10 @@ Unnotarized preview builds may trigger a macOS warning. For a build you trust, f
 
 ## Use
 
+### New in 0.4.0
+
+Enable **Beta** for the redesigned library: folder cards preview multiple conversations, folders merge by drag-and-drop, and right-click menus provide rename, constellation, merge, dissolve, and delete controls. See the [0.4.0 release notes and screenshots](docs/releases/v0.4.0.md).
+
 - **Hold Fn/Globe**, speak, then release to transcribe.
 - **Double-tap** to keep recording hands-free; tap again to finish.
 - **Escape** cancels recording.
@@ -60,6 +64,8 @@ This runs tests, generates the Xcode project, builds Release, collects dependenc
 For development, run `xcodegen generate`, open `Murmur.xcodeproj`, and select the Murmur scheme. Approve the MLX macro if Xcode asks. Test the standalone core with `swift test --package-path MurmurCore`.
 
 Run `bash tools/check-beta-state.sh` for beta state regression checks with isolated temporary data. These checks cover delayed folder naming, manual edits, undo, page merges, and live conversation details, and also run during release packaging.
+
+Run `bash tools/preview-night-sky.sh` to render the Beta UI at wide and compact sizes, including its empty state and recording indicator. It uses synthetic data and writes screenshots to `.build/preview/`.
 
 `project.yml` is the project source of truth. The generated Xcode project is ignored, except for the committed `Package.resolved` dependency pins. Regenerate after changing project settings.
 

@@ -40,6 +40,7 @@ final class NoteFolderMigrationTests: XCTestCase {
         XCTAssertEqual(store.folders[0].id, folderID)
         XCTAssertEqual(store.folders[0].name, "Interviews")
         XCTAssertEqual(store.folders[0].anchorTags, [:])
+        XCTAssertEqual(store.folders[0].effectiveConstellationID, folderID)
         XCTAssertEqual(try setAsideFiles(besides: url), [], "notebook must not be treated as corrupt")
     }
 
@@ -53,5 +54,34 @@ final class NoteFolderMigrationTests: XCTestCase {
 
     func test_folderDefaultsToNoAnchors() {
         XCTAssertEqual(NoteFolder(id: UUID(), name: "Work").anchorTags, [:])
+    }
+
+    func testNewConstellationPersistsWithoutChangingFolderIdentity() throws {
+        let url = freshNotebookURL()
+        let store = NotebookStore(fileURL: url)
+        let id = try XCTUnwrap(store.createFolder(name: "Work"))
+        store.moveCurrent(to: id)
+        store.regenerateConstellation(id)
+        let newPattern = store.folders[0].effectiveConstellationID
+        XCTAssertNotEqual(newPattern, id)
+        let reloaded = NotebookStore(fileURL: url)
+        XCTAssertEqual(reloaded.folders[0].id, id)
+        XCTAssertEqual(reloaded.folders[0].effectiveConstellationID, newPattern)
+        XCTAssertEqual(reloaded.pages[0].folderID, id)
+    }
+
+    func testDeletingAllFolderPagesLeavesValidBlankNotebook() throws {
+        let url = freshNotebookURL()
+        let store = NotebookStore(fileURL: url)
+        let id = try XCTUnwrap(store.createFolder(name: "Work"))
+        store.moveCurrent(to: id)
+        store.updateCurrent(content: "remove me")
+        store.deleteFolderAndContents(id)
+        let reloaded = NotebookStore(fileURL: url)
+        XCTAssertTrue(reloaded.folders.isEmpty)
+        XCTAssertEqual(reloaded.pages.count, 1)
+        XCTAssertEqual(reloaded.pages[0].id, reloaded.currentID)
+        XCTAssertEqual(reloaded.currentContent, "")
+        XCTAssertNil(reloaded.pages[0].folderID)
     }
 }

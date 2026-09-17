@@ -7,14 +7,21 @@ import MurmurCore
 struct SpringboardView: View {
     @ObservedObject var state: AppState
     @Binding var search: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var openFolderID: UUID?
+    @State private var deletionTarget: NoteFolder?
+    @State private var confirmingDeletion = false
     @State private var dropTargetID: UUID?
     @State private var renamingFolderID: UUID?
     private struct ConversationSelection: Identifiable { let id: UUID }
     @State private var detailSelection: ConversationSelection?
     @State private var openScratchpadAfterDetail = false
     @State private var showingScratchpad = false
+    @State private var tileFrames: [UUID: CGRect] = [:]
+    @State private var groupingTrace: GroupingTrace?
+    @State private var traceProgress: CGFloat = 0
+    @State private var traceOpacity: Double = 0
 
     private var isSearching: Bool {
         !search.trimmingCharacters(in: .whitespaces).isEmpty
@@ -47,11 +54,29 @@ struct SpringboardView: View {
         VStack(spacing: 0) {
             breadcrumb
             if let summary = state.lastGroupingSummary { undoBar(summary) }
-            Divider().opacity(0.5)
-            grid
+            ZStack {
+                grid
+                    .id(isSearching ? "search" : (openFolderID?.uuidString ?? "root"))
+                    .transition(reduceMotion ? .identity : .opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+            }
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: openFolderID)
             footer
         }
-        .background(Theme.canvas)
+        .background(NightSky())
+        .coordinateSpace(name: "springboard")
+        .onPreferenceChange(TileFramesKey.self) { tileFrames = $0 }
+        .overlay { groupingOverlay.allowsHitTesting(false).accessibilityHidden(true) }
+        .clipped()
+        .alert("Delete folder and contents?", isPresented: $confirmingDeletion, presenting: deletionTarget) { folder in
+            Button("Cancel", role: .cancel) { deletionTarget = nil }
+            Button("Delete everything", role: .destructive) {
+                state.deleteFolderAndContents(folder.id)
+                deletionTarget = nil
+            }
+        } message: { folder in
+            Text("“\(folder.name)” and its \(state.conversationCount(inFolder: folder.id)) conversations and \(state.noteCount(inFolder: folder.id)) scratchpad pages will be permanently deleted. To keep them, choose Dissolve folder instead.")
+        }
+        .onChange(of: reduceMotion) { _, enabled in if enabled { groupingTrace = nil } }
         .sheet(item: $detailSelection, onDismiss: {
             if openScratchpadAfterDetail {
                 openScratchpadAfterDetail = false
@@ -95,10 +120,18 @@ struct SpringboardView: View {
                 if conversations.isEmpty && visibleFolders.isEmpty {
                     emptyState
                 } else {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 18)],
-                              alignment: .leading, spacing: 20) {
-                        ForEach(visibleFolders) { folder in folderTile(folder) }
-                        ForEach(conversations) { entry in conversationTile(entry) }
+                    if !visibleFolders.isEmpty {
+                        sectionHeading("COLLECTIONS", count: visibleFolders.count)
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
+                            ForEach(visibleFolders) { folder in folderTile(folder) }
+                        }
+                        .padding(.bottom, 28)
+                    }
+                    if !conversations.isEmpty {
+                        sectionHeading(isSearching ? "MATCHING THOUGHTS" : (openFolderID == nil ? "UNFILED THOUGHTS" : "CONVERSATIONS"), count: conversations.count)
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 24) {
+                            ForEach(conversations) { entry in conversationTile(entry) }
+                        }
                     }
                 }
                 if let folder = openFolder, !isSearching {
@@ -106,14 +139,30 @@ struct SpringboardView: View {
                                        onOpenScratchpad: { showingScratchpad = true })
                 }
             }
-            .padding(22)
+            .padding(.horizontal, 28)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: visibleFolders.map(\.id))
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.28), value: conversations.map(\.id))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Dropping on empty canvas inside a folder takes the conversation back out.
         .dropDestination(for: ConversationRef.self) { refs, _ in
             unfileDropped(refs, requiringOpenFolder: true)
         }
+    }
+
+    private var columns: [GridItem] { [GridItem(.adaptive(minimum: 184, maximum: 260), spacing: 22)] }
+
+    private func sectionHeading(_ title: String, count: Int) -> some View {
+        HStack(spacing: 8) {
+            Text(title).tracking(1.8)
+            Text("\(count)").foregroundStyle(Theme.muted.opacity(0.65))
+        }
+        .font(.system(size: 9, weight: .medium))
+        .foregroundStyle(Theme.muted)
+        .padding(.bottom, 14)
     }
 
     /// Dragging a tile out of an open folder unfiles it. Guarded on `!isSearching`
@@ -134,10 +183,11 @@ struct SpringboardView: View {
             onOpen: { detailSelection = ConversationSelection(id: entry.id) },
             onRename: { state.setPrimaryConversationTag($0, id: entry.id) }
         )
-        .draggable(ConversationRef(entry: entry))
+        .background(tileFrame(entry.id))
         .dropDestination(for: ConversationRef.self) { refs, _ in
             guard let ref = refs.first, ref.id != entry.id else { return false }
             guard let result = state.groupConversations(ref.id, entry.id) else { return false }
+            showGroupingTrace(from: ref.id, to: entry.id)
             if result.shouldPromptForName {
                 // The name field can only take focus once the folder's tile renders, and a
                 // flattened search grid hides folder tiles — so surface the root grid.
@@ -180,9 +230,19 @@ struct SpringboardView: View {
             onRenameEnded: { renamingFolderID = nil },
             onRenameBegan: { state.cancelFolderNaming(folder.id) }
         )
-        .dropDestination(for: ConversationRef.self) { refs, _ in
+        .background(tileFrame(folder.id))
+        .contextMenu { folderActions(folder) }
+        .dropDestination(for: FolderDrop.self) { refs, _ in
             guard let ref = refs.first else { return false }
-            state.fileConversation(ref.id, into: folder.id)
+            switch ref {
+            case .conversation(let conversation):
+                guard state.historyEntries.contains(where: { $0.id == conversation.id && $0.folderID != folder.id }) else { return false }
+                state.fileConversation(conversation.id, into: folder.id)
+                showGroupingTrace(from: conversation.id, to: folder.id)
+            case .folder(let source):
+                guard state.mergeFolders(source.id, into: folder.id) else { return false }
+                showGroupingTrace(from: source.id, to: folder.id)
+            }
             return true
         } isTargeted: { targeted in
             if targeted { dropTargetID = folder.id }
@@ -192,37 +252,74 @@ struct SpringboardView: View {
 
     // MARK: Chrome
 
-    @ViewBuilder private var breadcrumb: some View {
-        if isSearching {
-            header { Text("Results for \u{201C}\(search)\u{201D}") }
-        } else if let folder = openFolder {
-            header {
-                Button { openFolderID = nil } label: {
-                    Label("All", systemImage: "chevron.left")
+    @ViewBuilder
+    private func folderActions(_ folder: NoteFolder) -> some View {
+        Button("Open folder", systemImage: "folder") { openFolderID = folder.id }
+        Button("Rename…", systemImage: "pencil") {
+            state.cancelFolderNaming(folder.id)
+            openFolderID = nil
+            renamingFolderID = folder.id
+        }
+        Button("New constellation", systemImage: "sparkles") { state.regenerateConstellation(folder.id) }
+        Menu("Merge into…") {
+            ForEach(state.folders.filter { $0.id != folder.id }.sorted {
+                $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }) { destination in
+                Button(destination.name) {
+                    if state.mergeFolders(folder.id, into: destination.id), openFolderID == folder.id {
+                        openFolderID = destination.id
+                    }
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.accent)
-                // Dragging a tile onto the breadcrumb takes it out of the folder.
-                .dropDestination(for: ConversationRef.self) { refs, _ in
-                    unfileDropped(refs, requiringOpenFolder: false)
-                }
-                Text("/").foregroundStyle(.tertiary)
-                Text(folder.name).fontWeight(.semibold)
             }
-        } else {
-            header { Text("All conversations") }
+        }
+        .disabled(state.folders.count < 2)
+        Divider()
+        Button("Dissolve folder · keep contents", systemImage: "square.stack.3d.up.slash") {
+            state.deleteFolder(folder.id)
+        }
+        Button("Delete folder and contents…", systemImage: "trash", role: .destructive) {
+            deletionTarget = folder
+            confirmingDeletion = true
         }
     }
 
-    private func header<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        HStack(spacing: 8) {
-            content()
+    private var breadcrumb: some View {
+        HStack(alignment: .bottom, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                if let folder = openFolder, !isSearching {
+                    Button { openFolderID = nil } label: { Label("All", systemImage: "chevron.left") }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.accent)
+                        .dropDestination(for: ConversationRef.self) { refs, _ in
+                            unfileDropped(refs, requiringOpenFolder: false)
+                        }
+                    Text(folder.name).font(.system(size: 30, weight: .regular, design: .serif))
+                        .lineLimit(1)
+                } else {
+                    if isSearching {
+                        Text("Search results")
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                }
+            }
             Spacer()
-            Text("\(conversations.count)").foregroundStyle(.secondary)
+            if let folder = openFolder, !isSearching {
+                Constellation(seed: ConstellationStyle.seed(for: folder.effectiveConstellationID), tint: ConstellationStyle.tint(for: folder.id))
+                    .frame(width: 90, height: 55)
+                Menu { folderActions(folder) } label: { Image(systemName: "ellipsis.circle") }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Folder options")
+            } else {
+                Text("\(isSearching ? conversations.count : state.historyEntries.count) conversations")
+                    .font(.system(size: 11)).foregroundStyle(Theme.muted)
+            }
         }
-        .font(.system(size: 12))
-        .padding(.horizontal, 22)
-        .frame(height: 38)
+        .foregroundStyle(Theme.ink)
+        .padding(.horizontal, 28)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
     }
 
     private func undoBar(_ summary: String) -> some View {
@@ -236,24 +333,35 @@ struct SpringboardView: View {
             Spacer()
         }
         .font(.system(size: 11))
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 28)
         .padding(.vertical, 7)
         .background(.white.opacity(0.04))
     }
 
     private var emptyState: some View {
-        Text(state.historyEntries.isEmpty ? "No conversations yet" : "No matching conversations")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity)
-            .padding(.top, 60)
+        VStack(spacing: 14) {
+            Constellation(seed: 0xA574A2026).frame(width: 150, height: 80)
+            Text(isSearching ? "No matching conversations" : (openFolderID == nil ? "No conversations yet" : "No conversations in this folder"))
+                .font(.system(size: 25, weight: .regular, design: .serif)).foregroundStyle(Theme.ink)
+            Text(isSearching ? "Try another word or tag." : (openFolderID == nil ? "Hold \(state.hotkey == .fn ? "Fn" : "Right Option") to record." : "Drag conversations into this folder to add them."))
+                .font(.system(size: 12)).foregroundStyle(Theme.muted)
+            if isSearching {
+                Button("Clear search") { search = "" }.buttonStyle(.bordered).controlSize(.small)
+            }
+        }
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 48)
     }
 
     private var footer: some View {
-        HStack {
-            Text("Drag one conversation onto another to group them")
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
+        HStack(spacing: 8) {
+            VoiceSignal(phase: state.phase, level: state.inputLevel)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(recordingLabel).font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.ink)
+                Text("Drag thoughts together to make a collection")
+                    .font(.system(size: 10)).foregroundStyle(Theme.muted)
+            }
             Spacer()
             Button { showingScratchpad = true } label: {
                 Label("Scratchpad", systemImage: "books.vertical")
@@ -262,9 +370,77 @@ struct SpringboardView: View {
             .controlSize(.small)
         }
         .padding(.horizontal, 22)
-        .padding(.vertical, 10)
+        .padding(.vertical, 16)
+        .background(Theme.midnight.opacity(0.85))
+        .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.06)).frame(height: 1) }
     }
 
+    private var recordingLabel: String {
+        switch state.phase {
+        case .listening(let locked): return locked ? "Listening, hands-free" : "Listening to your thought…"
+        case .transcribing: return "Transcribing…"
+        case .polishing: return "Polishing your words…"
+        case .downloading: return "Preparing models…"
+        case .error: return "Check the message above"
+        case .idle: return "Hold \(state.hotkey == .fn ? "Fn" : "Right Option") to capture a thought"
+        }
+    }
+
+    private func tileFrame(_ id: UUID) -> some View {
+        GeometryReader { proxy in
+            Color.clear.preference(key: TileFramesKey.self, value: [id: proxy.frame(in: .named("springboard"))])
+        }
+    }
+
+    @ViewBuilder private var groupingOverlay: some View {
+        if let trace = groupingTrace, !reduceMotion {
+            Path { path in path.move(to: trace.from); path.addLine(to: trace.to) }
+                .trim(from: 0, to: traceProgress)
+                .stroke(Theme.accent.opacity(0.8), style: StrokeStyle(lineWidth: 1, lineCap: .round))
+                .shadow(color: Theme.accent.opacity(0.6), radius: 5)
+                .opacity(traceOpacity)
+            Circle().fill(Theme.accent)
+                .frame(width: 6, height: 6)
+                .shadow(color: Theme.accent, radius: 8)
+                .position(x: trace.from.x + (trace.to.x - trace.from.x) * traceProgress,
+                          y: trace.from.y + (trace.to.y - trace.from.y) * traceProgress)
+                .opacity(traceOpacity)
+        }
+    }
+
+    private func showGroupingTrace(from source: UUID, to target: UUID) {
+        guard !reduceMotion, let a = tileFrames[source], let b = tileFrames[target] else { return }
+        let trace = GroupingTrace(from: CGPoint(x: a.midX, y: a.minY + Theme.tileHeight / 2),
+                                  to: CGPoint(x: b.midX, y: b.minY + Theme.tileHeight / 2))
+        groupingTrace = trace
+        traceProgress = 0
+        traceOpacity = 1
+        Task { @MainActor in
+            // Give the new overlay its initial frame before drawing the connection.
+            try? await Task.sleep(for: .milliseconds(20))
+            guard groupingTrace?.id == trace.id else { return }
+            withAnimation(.easeOut(duration: 0.3)) { traceProgress = 1 }
+            try? await Task.sleep(for: .milliseconds(320))
+            guard groupingTrace?.id == trace.id else { return }
+            withAnimation(.easeOut(duration: 0.25)) { traceOpacity = 0 }
+            try? await Task.sleep(for: .milliseconds(260))
+            if groupingTrace?.id == trace.id { groupingTrace = nil }
+        }
+    }
+
+}
+
+private struct GroupingTrace {
+    let id = UUID()
+    let from: CGPoint
+    let to: CGPoint
+}
+
+private struct TileFramesKey: PreferenceKey {
+    static var defaultValue: [UUID: CGRect] { [:] }
+    static func reduce(value: inout [UUID: CGRect], nextValue: () -> [UUID: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, next in next })
+    }
 }
 
 /// Observe the store inside the sheet; its selection holds only an ID, never a
