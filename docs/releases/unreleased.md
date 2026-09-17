@@ -1,0 +1,32 @@
+# Upcoming beta — unreleased
+
+Changes since v0.2.0, currently on `feature/beta-springboard`.
+
+## What's new
+
+- **Beta springboard:** switch on Beta in the main window to browse conversations as a grid of transcript previews. Switch it off to return to the classic feed.
+- **Drag to organize:** drop one conversation onto another to group them, or drop it onto an existing folder to file it. Open folders to browse their contents; drag a conversation onto the All breadcrumb or an open folder's empty canvas to unfile it.
+- **Editable tile labels:** click a conversation's label to change its primary tag, or a folder's label to rename it.
+- **Folder naming:** shared tags suggest a folder name. When there is no shared tag, the local model can suggest one; an editable placeholder remains if naming is unavailable.
+- **Grouping undo:** undo the latest grouping during the current session. Undo unfiles conversations still in that group and removes a newly created folder only when it contains no conversations or scratchpad pages.
+- **Better organization suggestions:** manual grouping strengthens the tags associated with a folder, helping guide future Smart organize suggestions.
+- **Search across folders:** searching the beta grid shows matching conversations from every folder. Clearing search restores the previous folder view.
+- **Scratchpad access:** folder tiles include page counts, opened folders list their scratchpad pages, and the Scratchpad button opens the editor.
+
+## Fixes
+
+- Delayed folder names no longer replace the undo message for a newer grouping.
+- Opening a conversation in Beta now shows tag and folder changes immediately, without closing and reopening its detail sheet.
+- Starting a manual folder rename takes priority over a pending model response, including while the new name is still being typed.
+- Naming responses for undone, deleted, or changed groups are discarded instead of renaming stale folders or requesting edit focus.
+- When a generated name merges a group into an existing folder, scratchpad pages and folder tag weights are preserved. Page counts and the editor refresh to match the saved state.
+- Moving between conversation details and the scratchpad waits for the detail sheet to close before presenting the editor.
+
+## Development and validation
+
+- Debug builds can use a stable Apple Development signing identity through `bash tools/build-debug.sh`.
+- Added `bash tools/check-beta-state.sh`, which exercises the app state and beta views using isolated temporary data. These checks also run during release packaging.
+- Validation: 87 core tests and 10 beta state regression checks pass. The Debug app builds successfully and its development signature verifies.
+- Interactive GUI testing, fresh-machine installation, and model inference have not been revalidated for this update.
+
+Beta edits the same saved conversations and folders as the classic view. History still retains the most recent 200 dictations, including filed conversations.
