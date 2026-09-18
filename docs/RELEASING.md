@@ -2,7 +2,9 @@
 
 ## Build a preview
 
-Run `bash tools/package-release.sh` from the repository root. Outputs appear in `release/`; build products and user data must not be committed. The default archive is ad-hoc signed and **not notarized**. GitHub Actions produces the same preview artifact on pushes, pull requests, and manual runs; it does not publish releases.
+Run `bash tools/package-release.sh --preview` from the repository root for local testing. Outputs appear in `release/` with an explicit `-unnotarized-preview` filename suffix; build products and user data must not be committed. Preview archives are ad-hoc signed and **not notarized**. Their signing identity changes with each build and can invalidate saved macOS permissions. GitHub Actions produces only these test artifacts; it does not publish releases. Do not use them as routine updates for friends.
+
+Without `--preview`, packaging requires a Developer ID Application signing identity and a notarization profile before building. Missing configuration stops the script instead of silently producing an ad-hoc release. `--check-config` validates configuration without building or using credentials; it does not verify that the certificate or notary profile exists.
 
 Set `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml` before a release. The generated Info.plist derives its version from those settings. Keep the existing `Murmur.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` in Git so fresh builds use the tested dependency revisions.
 
@@ -16,7 +18,15 @@ MURMUR_NOTARY_PROFILE='murmur-notary' \
 bash tools/package-release.sh
 ```
 
-The script signs with the hardened runtime and microphone entitlement, submits the ZIP to Apple's notary service, staples the accepted ticket, verifies it, and rebuilds the ZIP and checksum. Notarization is opt-in and uploads the application to Apple. See [Apple's notarization documentation](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
+The distribution script signs with the hardened runtime and microphone entitlement, submits the ZIP to Apple's notary service, staples the accepted ticket, verifies it, and rebuilds the ZIP and checksum. Running distribution packaging uploads the application to Apple; `--preview` never submits it. See [Apple's notarization documentation](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
+
+### Keep permission grants across updates
+
+Enroll in the [Apple Developer Program](https://developer.apple.com/programs/enroll/), create a **Developer ID Application** certificate in Xcode's account settings or the developer portal, and configure a notarytool keychain profile. Keep credentials in Keychain, not this repository or chat. An Apple Development certificate is for local development and is not a substitute for Developer ID distribution signing.
+
+Keep the distribution bundle identifier (`com.murmur.Murmur`) and Developer ID team consistent. macOS recognizes updates through their designated signing requirement, not just the displayed app name. Confirm it with `codesign -d -r- /Applications/Murmur.app`; a distribution build must not have a requirement consisting only of a `cdhash`. See [Apple TN3127](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements).
+
+Users moving from the old ad-hoc previews may need a final permission regrant. Validate the fix by granting permissions to one Developer ID-signed build, replacing it with a second signed build from the same team, and confirming microphone access, hotkey detection, and paste work without removing any System Settings entries. Test development and distribution builds separately: their default signing requirements differ. Notarization improves installation trust; stable code identity is what addresses update recognition.
 
 ## Check the actual download
 

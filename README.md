@@ -4,6 +4,8 @@ Local dictation for your Mac. Hold a hotkey, speak, and release to insert text i
 
 ## Download and install
 
+Starting with **0.4.1**, public app downloads are Developer ID signed and notarized by Apple. Upgrading from earlier ad-hoc previews may require one final permission grant; future distribution builds keep the same signing identity. See the [0.4.1 release notes](docs/releases/v0.4.1.md).
+
 Requires an **Apple Silicon Mac (M1 or later), macOS 14 or later**, and an internet connection for the initial model downloads. Intel Macs, Windows, and Linux are not supported. Allow several GB of free storage for models. Speech recognition uses the English Parakeet v2 model.
 
 1. Open the [Releases page](https://github.com/krisekenes/murmur/releases) and download `Murmur-<version>-macOS-arm64.zip` from the release assets. GitHub's “Source code” ZIP is for developers; it isn't an app. If no release is available yet, use the build instructions below.
@@ -61,10 +63,12 @@ Use an Apple Silicon Mac with **Xcode 26.3** (the tested toolchain), its command
 ```sh
 git clone https://github.com/krisekenes/murmur.git
 cd murmur
-bash tools/package-release.sh
+bash tools/package-release.sh --preview
 ```
 
 This runs tests, generates the Xcode project, builds Release, collects dependency notices, ad-hoc signs the app, and creates a ZIP plus SHA-256 checksum under `release/`. It downloads the existing pinned build dependencies. The build explicitly enables their Swift macros with `-skipMacroValidation`; only build dependency revisions you trust.
+
+`--preview` is for local and CI testing; its changing signature can invalidate saved permissions after updates. Distribution packaging requires Developer ID signing and notarization and never falls back to ad-hoc signing. See [Publishing Murmur](docs/RELEASING.md).
 
 For development, run `xcodegen generate`, open `Murmur.xcodeproj`, and select the Murmur scheme. Approve the MLX macro if Xcode asks. Test the standalone core with `swift test --package-path MurmurCore`.
 

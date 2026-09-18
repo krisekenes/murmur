@@ -15,9 +15,11 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Test and package
-        run: bash tools/package-release.sh
+        run: |
+          python3 tools/Tests/ReleaseConfigChecks.py
+          bash tools/package-release.sh --preview
       - uses: actions/upload-artifact@v4
         with:
           name: Murmur-macOS-arm64-unnotarized
-          path: release/*
+          path: release/*-unnotarized-preview.zip*
           if-no-files-found: error
